@@ -7,6 +7,10 @@
 #   bin/junie uninstall   Remove the files installed by this repository
 #   bin/junie doctor      Verify installed files are present and match the repository
 #
+# The repository files are vendor-neutral templates containing {placeholder}
+# variables. They are rendered with the Junie-specific values defined in
+# PLACEHOLDERS below as they are copied into the Junie home directory.
+#
 # The Junie home directory defaults to ~/.junie and can be overridden with JUNIE_HOME.
 
 set -euo pipefail
@@ -22,6 +26,42 @@ JUNIE_HOME_DIR="${JUNIE_HOME:-$HOME/.junie}"
 
 # Repository directories that are mirrored into the Junie home directory.
 MANAGED_DIRS=(commands agents)
+
+# Junie-specific placeholder values, as alternating name/value pairs.
+# A value may span multiple lines and may be empty.
+PLACEHOLDERS=(
+    # Command front matter and the variable holding the command's argument.
+    command-frontmatter 'allowPromptArgument: true'
+    task-argument       '$task'
+
+    # Directory (relative to the project root) holding the task pipeline folders.
+    tasks-dir           '.junie/tasks'
+
+    # Tool used by the orchestrator to delegate work to a sub-agent.
+    spawn-agent         'spawn_subagent'
+
+    # Optional hints appended after a sub-agent name when delegating to it.
+    planning-agent-hint       ' (or mode `EXPLORE`/`OTHER`)'
+    implementation-agent-hint ' (mode `CODE`)'
+
+    # Agent front matter: tool allow-list, and model settings per agent.
+    agent-tools 'tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]'
+    planning-frontmatter 'model: "gemini-3.8-flash"
+reasoningEffort: "medium"
+reasoningLevel: "medium"
+allowPromptArgument: true'
+    implementation-frontmatter 'model: "gemini-3.8-flash"
+reasoningEffort: "low"
+reasoningLevel: "low"
+allowPromptArgument: true'
+    verification-frontmatter 'model: "gemini-3.8-flash"
+reasoningEffort: "low"
+reasoningLevel: "low"
+allowPromptArgument: true'
+
+    # Name of the tool agents use to run shell commands.
+    shell-tool 'Bash'
+)
 
 if [[ -t 1 ]]; then
     RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RESET=$'\033[0m'
@@ -56,6 +96,26 @@ list_managed_files() {
     done
 }
 
+# Prints the repository file (relative path) with every placeholder replaced by
+# its Junie-specific value. Fails if any {hyphenated-placeholder} is left over.
+render() {
+    local rel="$1" content key value i leftover
+    # Append and strip a sentinel so trailing newlines survive command substitution.
+    content="$(cat "$REPO_ROOT/$rel"; printf x)"
+    content="${content%x}"
+    for ((i = 0; i < ${#PLACEHOLDERS[@]}; i += 2)); do
+        key="{${PLACEHOLDERS[i]}}"
+        value="${PLACEHOLDERS[i + 1]}"
+        content="${content//"$key"/$value}"
+    done
+    leftover="$(printf '%s' "$content" | grep -oE '\{[a-z0-9]+(-[a-z0-9]+)+\}' | sort -u | tr '\n' ' ' || true)"
+    if [[ -n "$leftover" ]]; then
+        echo "${RED}error:${RESET} unknown placeholder(s) in $rel: $leftover" >&2
+        return 1
+    fi
+    printf '%s' "$content"
+}
+
 managed_files() {
     local files
     files="$(list_managed_files)"
@@ -67,23 +127,26 @@ managed_files() {
 }
 
 cmd_install() {
-    local rel dest installed=0 updated=0 unchanged=0
+    local rel dest rendered installed=0 updated=0 unchanged=0
+    rendered="$(mktemp)"
     while IFS= read -r rel; do
         dest="$JUNIE_HOME_DIR/$rel"
+        render "$rel" > "$rendered"
         mkdir -p "$(dirname "$dest")"
         if [[ ! -e "$dest" ]]; then
-            cp "$REPO_ROOT/$rel" "$dest"
+            cp "$rendered" "$dest"
             echo "${GREEN}installed${RESET}  $dest"
             installed=$((installed + 1))
-        elif cmp -s "$REPO_ROOT/$rel" "$dest"; then
+        elif cmp -s "$rendered" "$dest"; then
             echo "unchanged  $dest"
             unchanged=$((unchanged + 1))
         else
-            cp "$REPO_ROOT/$rel" "$dest"
+            cp "$rendered" "$dest"
             echo "${YELLOW}updated${RESET}    $dest"
             updated=$((updated + 1))
         fi
     done < <(managed_files)
+    rm -f "$rendered"
     echo
     echo "Done: $installed installed, $updated updated, $unchanged unchanged."
 }
@@ -111,16 +174,18 @@ cmd_uninstall() {
 }
 
 cmd_doctor() {
-    local rel dest ok=0 problems=0
+    local rel dest rendered ok=0 problems=0
+    rendered="$(mktemp)"
     echo "Junie home: $JUNIE_HOME_DIR"
     echo "Repository: $REPO_ROOT"
     echo
     while IFS= read -r rel; do
         dest="$JUNIE_HOME_DIR/$rel"
+        render "$rel" > "$rendered"
         if [[ ! -e "$dest" ]]; then
             echo "${RED}missing${RESET}    $dest"
             problems=$((problems + 1))
-        elif ! cmp -s "$REPO_ROOT/$rel" "$dest"; then
+        elif ! cmp -s "$rendered" "$dest"; then
             echo "${RED}differs${RESET}    $dest"
             problems=$((problems + 1))
         else
@@ -128,6 +193,7 @@ cmd_doctor() {
             ok=$((ok + 1))
         fi
     done < <(managed_files)
+    rm -f "$rendered"
     echo
     if [[ $problems -gt 0 ]]; then
         echo "${RED}Problems found${RESET}: $ok ok, $problems with issues. Run '$(basename "$0") install' to fix."

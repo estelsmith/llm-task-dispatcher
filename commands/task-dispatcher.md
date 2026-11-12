@@ -11,6 +11,27 @@ Target task parameter: {{task-argument}}
 
 ---
 
+## Operating Rules
+
+Follow this protocol exactly as written. Never improvise, work around, or substitute a step you cannot carry out as specified. If any step cannot be performed as written, halt and report it to the user instead.
+
+### Required Sub-Agents
+
+This pipeline requires these three custom sub-agents, each spawned by its exact name as its agent type:
+
+- `task-dispatcher-planning`
+- `task-dispatcher-implementation`
+- `task-dispatcher-verification`
+
+Rules:
+
+1. **Pre-flight check:** Before ingesting, moving, or editing any task file, confirm that all three agents are available to {{spawn-agent}}. If any is missing, stop immediately without touching `{{tasks-dir}}/`, and tell the user which agents are missing.
+2. **No substitutes:** Never spawn a general-purpose, built-in, or differently named agent in place of a required one, even if you copy its instructions into the prompt. Never perform a sub-agent's work yourself.
+3. **Missing mid-run:** If a required agent cannot be spawned once the pipeline has started, set `status: FAILED`, log `- {time} [router] Required sub-agent <name> unavailable; halted pipeline.`, halt, and alert the user.
+4. **Unusable report:** If a sub-agent still does not return a report in its required format after one resend request, set `status: FAILED`, log `- {time} [router] <agent> did not return a valid report; halted pipeline.`, halt, and alert the user.
+
+---
+
 ## 1. Directory Structure Setup
 
 Ensure the following workspace structure exists before executing tasks:
@@ -132,13 +153,13 @@ Every task goes through the full Tri-Agent pipeline, regardless of its size or c
 
 Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrating main agent. Sub-agents run one at a time, and each phase follows the same cycle:
 
-1. **Spawn:** Delegate to the sub-agent, passing the task file path `{{tasks-dir}}/in-progress/<target-file>` and the phase-specific context listed below. Sub-agents read the task file but never modify it.
-2. **Receive Report:** The sub-agent finishes with a report in the format defined in its instructions. If the report is missing or does not follow the format, ask the same sub-agent to resend it in the required format before continuing.
+1. **Spawn:** Delegate to the required sub-agent by its exact name (see Operating Rules), passing the task file path `{{tasks-dir}}/in-progress/<target-file>` and the phase-specific context listed below. Sub-agents read the task file but never modify it.
+2. **Receive Report:** The sub-agent finishes with a report in the format defined in its instructions. If the report is missing or does not follow the format, ask the same sub-agent to resend it in the required format once before continuing; if it still fails, follow the Unusable report rule.
 3. **Record:** Log the report's `**Log:**` line as `- {time} [{agent}] <synopsis>` and write the report content into the task file as described for each phase.
 4. **Route:** Update the frontmatter, log the phase transition, and continue with the next phase.
 
 ### Phase 1: Planning
-1. **Delegate via {{spawn-agent}}:** Spawn the planning sub-agent `task-dispatcher-planning`{{planning-agent-hint}}. Pass the task file path and, when re-planning, point it to the `# Human Rejection & Feedback` section.
+1. **Delegate via {{spawn-agent}}:** Spawn the planning sub-agent `task-dispatcher-planning`. Pass the task file path and, when re-planning, point it to the `# Human Rejection & Feedback` section.
 2. **Record Planning Report:**
     - Log: `- {time} [planning] <Log line from the report>`
     - Write the report's `### Plan` content to the `## Plan` section of the task file (replacing any previous plan).
@@ -148,7 +169,7 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 ---
 
 ### Phase 2: Implementation
-1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`{{implementation-agent-hint}}. Pass the task file path and the attempt number (`retry_count + 1`). On a retry, point it to the latest `## Verification Feedback` attempt; after a human rejection, point it to the `# Human Rejection & Feedback` section.
+1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`. Pass the task file path and the attempt number (`retry_count + 1`). On a retry, point it to the latest `## Verification Feedback` attempt; after a human rejection, point it to the `# Human Rejection & Feedback` section.
 2. **Record Implementation Report:**
     - Log: `- {time} [implementation] <Log line from the report>`
     - Append the report's `### Changes` and `### Checks Run` content under `## Implementation Details` → `### Attempt N`.

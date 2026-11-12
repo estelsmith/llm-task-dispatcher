@@ -59,10 +59,6 @@ disable-model-invocation: true'
     # Tool used by the orchestrator to delegate work to a sub-agent.
     spawn-agent         'the `Agent` tool'
 
-    # Optional hints appended after a sub-agent name when delegating to it.
-    planning-agent-hint       ''
-    implementation-agent-hint ''
-
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: Read, Write, Edit, Bash'
     planning-frontmatter       'model: claude-sonnet-5-5

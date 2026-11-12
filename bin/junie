@@ -40,10 +40,6 @@ PLACEHOLDERS=(
     # Tool used by the orchestrator to delegate work to a sub-agent.
     spawn-agent         '`spawn_subagent`'
 
-    # Optional hints appended after a sub-agent name when delegating to it.
-    planning-agent-hint       ' (or mode `EXPLORE`/`OTHER`)'
-    implementation-agent-hint ' (mode `CODE`)'
-
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]'
     planning-frontmatter 'model: "sonnet"

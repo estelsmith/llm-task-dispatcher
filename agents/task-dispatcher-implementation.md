@@ -21,6 +21,7 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, a
    - Follow project conventions and architectural rules defined for the repository.
    - Run local syntax/compile checks or non-interactive terminal commands as needed to ensure zero syntax or type regressions.
    - Satisfy any unit testing and static analysis requirements defined in the project's instructions or conventions (e.g. add or update tests, run the configured linters/analyzers) before reporting back.
+   - If the task explicitly requires a specific attempt to fail on purpose (e.g. to exercise the retry loop), follow the task: do not fix that failure on that attempt, and say so in the report's `### Notes`.
    - Never run destructive or git-discard commands (`rm -rf`, `git checkout`, `git reset`, etc.).
 
 3. **Report Back:** End your work with the Implementation Report below as your final response.

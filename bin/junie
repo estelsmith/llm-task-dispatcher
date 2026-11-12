@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+#
+# Installs, uninstalls and verifies the task dispatcher command and agents
+# in the user's Junie home directory.
+#
+#   bin/junie install     Copy commands/ and agents/ into ~/.junie (install or update)
+#   bin/junie uninstall   Remove the files installed by this repository
+#   bin/junie doctor      Verify installed files are present and match the repository
+#
+# The Junie home directory defaults to ~/.junie and can be overridden with JUNIE_HOME.
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    link_dir="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$link_dir/$SCRIPT_PATH"
+done
+REPO_ROOT="$(cd -P "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+JUNIE_HOME_DIR="${JUNIE_HOME:-$HOME/.junie}"
+
+# Repository directories that are mirrored into the Junie home directory.
+MANAGED_DIRS=(commands agents)
+
+if [[ -t 1 ]]; then
+    RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RESET=$'\033[0m'
+else
+    RED=""; GREEN=""; YELLOW=""; RESET=""
+fi
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") <command>
+
+Commands:
+  install     Install or update the task dispatcher command and agents into
+              ${JUNIE_HOME_DIR}
+  uninstall   Remove the installed command and agents from ${JUNIE_HOME_DIR}
+  doctor      Verify the installed files are in place and match the repository
+  help        Show this help
+
+Set JUNIE_HOME to use a Junie home directory other than ~/.junie.
+EOF
+}
+
+# Prints the repository-relative path (e.g. "agents/foo.md") of every managed file.
+list_managed_files() {
+    local dir file
+    for dir in "${MANAGED_DIRS[@]}"; do
+        [[ -d "$REPO_ROOT/$dir" ]] || continue
+        for file in "$REPO_ROOT/$dir"/*.md; do
+            [[ -f "$file" ]] || continue
+            printf '%s/%s\n' "$dir" "$(basename "$file")"
+        done
+    done
+}
+
+managed_files() {
+    local files
+    files="$(list_managed_files)"
+    if [[ -z "$files" ]]; then
+        echo "${RED}error:${RESET} no files found in ${MANAGED_DIRS[*]} under $REPO_ROOT" >&2
+        exit 1
+    fi
+    printf '%s\n' "$files"
+}
+
+cmd_install() {
+    local rel dest installed=0 updated=0 unchanged=0
+    while IFS= read -r rel; do
+        dest="$JUNIE_HOME_DIR/$rel"
+        mkdir -p "$(dirname "$dest")"
+        if [[ ! -e "$dest" ]]; then
+            cp "$REPO_ROOT/$rel" "$dest"
+            echo "${GREEN}installed${RESET}  $dest"
+            installed=$((installed + 1))
+        elif cmp -s "$REPO_ROOT/$rel" "$dest"; then
+            echo "unchanged  $dest"
+            unchanged=$((unchanged + 1))
+        else
+            cp "$REPO_ROOT/$rel" "$dest"
+            echo "${YELLOW}updated${RESET}    $dest"
+            updated=$((updated + 1))
+        fi
+    done < <(managed_files)
+    echo
+    echo "Done: $installed installed, $updated updated, $unchanged unchanged."
+}
+
+cmd_uninstall() {
+    local rel dest dir removed=0 missing=0
+    while IFS= read -r rel; do
+        dest="$JUNIE_HOME_DIR/$rel"
+        if [[ -e "$dest" || -L "$dest" ]]; then
+            rm -f "$dest"
+            echo "${GREEN}removed${RESET}    $dest"
+            removed=$((removed + 1))
+        else
+            echo "not found  $dest"
+            missing=$((missing + 1))
+        fi
+    done < <(managed_files)
+
+    # Clean up directories we may have created, but only if they are empty.
+    for dir in "${MANAGED_DIRS[@]}"; do
+        rmdir "$JUNIE_HOME_DIR/$dir" 2>/dev/null || true
+    done
+    echo
+    echo "Done: $removed removed, $missing not found."
+}
+
+cmd_doctor() {
+    local rel dest ok=0 problems=0
+    echo "Junie home: $JUNIE_HOME_DIR"
+    echo "Repository: $REPO_ROOT"
+    echo
+    while IFS= read -r rel; do
+        dest="$JUNIE_HOME_DIR/$rel"
+        if [[ ! -e "$dest" ]]; then
+            echo "${RED}missing${RESET}    $dest"
+            problems=$((problems + 1))
+        elif ! cmp -s "$REPO_ROOT/$rel" "$dest"; then
+            echo "${RED}differs${RESET}    $dest"
+            problems=$((problems + 1))
+        else
+            echo "${GREEN}ok${RESET}         $dest"
+            ok=$((ok + 1))
+        fi
+    done < <(managed_files)
+    echo
+    if [[ $problems -gt 0 ]]; then
+        echo "${RED}Problems found${RESET}: $ok ok, $problems with issues. Run '$(basename "$0") install' to fix."
+        return 1
+    fi
+    echo "${GREEN}All good${RESET}: $ok files installed and up to date."
+}
+
+main() {
+    local command="${1:-help}"
+    case "$command" in
+        install)   cmd_install ;;
+        uninstall) cmd_uninstall ;;
+        doctor)    cmd_doctor ;;
+        help|-h|--help) usage ;;
+        *)
+            echo "${RED}error:${RESET} unknown command '$command'" >&2
+            echo >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

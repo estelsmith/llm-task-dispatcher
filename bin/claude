@@ -3,13 +3,17 @@
 # Installs, uninstalls and verifies the task dispatcher command and agents
 # in the user's Claude Code configuration directory.
 #
-#   bin/claude install     Copy commands/ and agents/ into ~/.claude (install or update)
+#   bin/claude install     Install commands/ as skills and agents/ as subagents into ~/.claude
 #   bin/claude uninstall   Remove the files installed by this repository
 #   bin/claude doctor      Verify installed files are present and match the repository
 #
 # The repository files are vendor-neutral templates containing {{placeholder}}
 # variables. They are rendered with the Claude Code-specific values defined in
 # PLACEHOLDERS below as they are copied into the Claude Code configuration directory.
+#
+# Commands are installed as skills (skills/<name>/SKILL.md), which is where the
+# Claude Desktop app and current Claude Code versions discover slash commands.
+# Agents are installed as-is into agents/.
 #
 # The configuration directory defaults to ~/.claude and can be overridden with
 # CLAUDE_CONFIG_DIR, the same variable Claude Code itself uses.
@@ -28,11 +32,25 @@ TOOL_NAME="Claude Code"
 HOME_ENV_VAR="CLAUDE_CONFIG_DIR"
 DEFAULT_HOME="$HOME/.claude"
 
+# Installs commands/<name>.md as skills/<name>/SKILL.md; everything else keeps its path.
+install_path() {
+    local rel="$1" name
+    if [[ "$rel" == commands/*.md ]]; then
+        name="$(basename "$rel" .md)"
+        printf 'skills/%s/SKILL.md\n' "$name"
+    else
+        printf '%s\n' "$rel"
+    fi
+}
+
 # Claude Code-specific placeholder values, as alternating name/value pairs.
 # A value may span multiple lines and may be empty.
 PLACEHOLDERS=(
-    # Command front matter and the variable holding the command's argument.
-    command-frontmatter 'argument-hint: <task-file>'
+    # Command (skill) front matter and the variable holding the command's argument.
+    # disable-model-invocation keeps Claude from starting the pipeline on its own.
+    command-frontmatter 'name: task-dispatcher
+argument-hint: "[task-file]"
+disable-model-invocation: true'
     task-argument       '$ARGUMENTS'
 
     # Directory (relative to the project root) holding the task pipeline folders.
@@ -46,7 +64,7 @@ PLACEHOLDERS=(
     implementation-agent-hint ''
 
     # Agent front matter: tool allow-list, and model settings per agent.
-    agent-tools 'tools: Read, Glob, Grep, Write, Edit, Bash'
+    agent-tools 'tools: Read, Write, Edit, Bash'
     planning-frontmatter       'model: inherit'
     implementation-frontmatter 'model: inherit'
     verification-frontmatter   'model: inherit'

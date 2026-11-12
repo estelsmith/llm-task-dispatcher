@@ -10,6 +10,9 @@
 #                    and may be empty; a placeholder that is alone on its line and
 #                    renders empty removes the whole line.
 #
+# A script may also redefine install_path() after sourcing this file to change
+# where a repository file is installed (e.g. commands as Claude Code skills).
+#
 # Repository files are vendor-neutral templates. Install-time placeholders use
 # the {{name}} syntax; single-brace {name} fields are left untouched because they
 # are template fields meant for the agent itself (e.g. {time} in log entries).
@@ -45,6 +48,23 @@ Commands:
 
 Set ${HOME_ENV_VAR} to use a ${TOOL_NAME} home directory other than ${DEFAULT_HOME/#$HOME/~}.
 EOF
+}
+
+# Prints the path, relative to the tool's home directory, that the repository
+# file (relative path) is installed to. Defaults to the same relative path.
+install_path() {
+    printf '%s\n' "$1"
+}
+
+# Removes the empty directories between the given path's parent and the tool's
+# home directory (exclusive), so uninstall leaves no empty folders behind.
+remove_empty_parents() {
+    local dir
+    dir="$(dirname "$1")"
+    while [[ "$dir" == "$TARGET_HOME_DIR"/* ]]; do
+        rmdir "$dir" 2>/dev/null || break
+        dir="$(dirname "$dir")"
+    done
 }
 
 # Prints the repository-relative path (e.g. "agents/foo.md") of every managed file.
@@ -97,7 +117,7 @@ cmd_install() {
     local rel dest rendered installed=0 updated=0 unchanged=0
     rendered="$(mktemp)"
     while IFS= read -r rel; do
-        dest="$TARGET_HOME_DIR/$rel"
+        dest="$TARGET_HOME_DIR/$(install_path "$rel")"
         if ! render "$rel" > "$rendered"; then
             rm -f "$rendered"
             exit 1
@@ -122,11 +142,12 @@ cmd_install() {
 }
 
 cmd_uninstall() {
-    local rel dest dir removed=0 missing=0
+    local rel dest removed=0 missing=0
     while IFS= read -r rel; do
-        dest="$TARGET_HOME_DIR/$rel"
+        dest="$TARGET_HOME_DIR/$(install_path "$rel")"
         if [[ -e "$dest" || -L "$dest" ]]; then
             rm -f "$dest"
+            remove_empty_parents "$dest"
             echo "${GREEN}removed${RESET}    $dest"
             removed=$((removed + 1))
         else
@@ -134,11 +155,6 @@ cmd_uninstall() {
             missing=$((missing + 1))
         fi
     done < <(managed_files)
-
-    # Clean up directories we may have created, but only if they are empty.
-    for dir in "${MANAGED_DIRS[@]}"; do
-        rmdir "$TARGET_HOME_DIR/$dir" 2>/dev/null || true
-    done
     echo
     echo "Done: $removed removed, $missing not found."
 }
@@ -150,7 +166,7 @@ cmd_doctor() {
     echo "Repository: $REPO_ROOT"
     echo
     while IFS= read -r rel; do
-        dest="$TARGET_HOME_DIR/$rel"
+        dest="$TARGET_HOME_DIR/$(install_path "$rel")"
         if ! render "$rel" > "$rendered"; then
             echo "${RED}invalid${RESET}    $REPO_ROOT/$rel"
             problems=$((problems + 1))

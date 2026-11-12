@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# Installs, uninstalls and verifies the task dispatcher command and agents
+# in the user's Claude Code configuration directory.
+#
+#   bin/claude install     Copy commands/ and agents/ into ~/.claude (install or update)
+#   bin/claude uninstall   Remove the files installed by this repository
+#   bin/claude doctor      Verify installed files are present and match the repository
+#
+# The repository files are vendor-neutral templates containing {{placeholder}}
+# variables. They are rendered with the Claude Code-specific values defined in
+# PLACEHOLDERS below as they are copied into the Claude Code configuration directory.
+#
+# The configuration directory defaults to ~/.claude and can be overridden with
+# CLAUDE_CONFIG_DIR, the same variable Claude Code itself uses.
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    link_dir="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$link_dir/$SCRIPT_PATH"
+done
+source "$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)/lib/installer.sh"
+
+TOOL_NAME="Claude Code"
+HOME_ENV_VAR="CLAUDE_CONFIG_DIR"
+DEFAULT_HOME="$HOME/.claude"
+
+# Claude Code-specific placeholder values, as alternating name/value pairs.
+# A value may span multiple lines and may be empty.
+PLACEHOLDERS=(
+    # Command front matter and the variable holding the command's argument.
+    command-frontmatter 'argument-hint: <task-file>'
+    task-argument       '$ARGUMENTS'
+
+    # Directory (relative to the project root) holding the task pipeline folders.
+    tasks-dir           '.claude/tasks'
+
+    # Tool used by the orchestrator to delegate work to a sub-agent.
+    spawn-agent         'the `Agent` tool'
+
+    # Optional hints appended after a sub-agent name when delegating to it.
+    planning-agent-hint       ''
+    implementation-agent-hint ''
+
+    # Agent front matter: tool allow-list, and model settings per agent.
+    agent-tools 'tools: Read, Glob, Grep, Write, Edit, Bash'
+    planning-frontmatter       'model: inherit'
+    implementation-frontmatter 'model: inherit'
+    verification-frontmatter   'model: inherit'
+
+    # Tool agents use to run shell commands.
+    shell-tool 'the `Bash` tool'
+)
+
+main "$@"

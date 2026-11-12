@@ -46,17 +46,14 @@ PLACEHOLDERS=(
 
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]'
-    planning-frontmatter 'model: "gemini-3.8-flash"
-reasoningEffort: "medium"
+    planning-frontmatter 'model: "claude-sonnet-5-5"
 reasoningLevel: "medium"
 allowPromptArgument: true'
-    implementation-frontmatter 'model: "gemini-3.8-flash"
-reasoningEffort: "low"
-reasoningLevel: "low"
+    implementation-frontmatter 'model: "claude-haiku-5-5"
+reasoningLevel: "high"
 allowPromptArgument: true'
-    verification-frontmatter 'model: "gemini-3.8-flash"
-reasoningEffort: "low"
-reasoningLevel: "low"
+    verification-frontmatter 'model: "claude-haiku-5-5"
+reasoningLevel: "high"
 allowPromptArgument: true'
 
     # Tool agents use to run shell commands.

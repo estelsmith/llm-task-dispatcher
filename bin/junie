@@ -46,13 +46,13 @@ PLACEHOLDERS=(
 
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]'
-    planning-frontmatter 'model: "claude-sonnet-5-5"
+    planning-frontmatter 'model: "sonnet"
 reasoningLevel: "medium"
 allowPromptArgument: true'
-    implementation-frontmatter 'model: "claude-haiku-5-5"
+    implementation-frontmatter 'model: "haiku"
 reasoningLevel: "high"
 allowPromptArgument: true'
-    verification-frontmatter 'model: "claude-haiku-5-5"
+    verification-frontmatter 'model: "haiku"
 reasoningLevel: "high"
 allowPromptArgument: true'
 

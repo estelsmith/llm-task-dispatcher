@@ -17,6 +17,10 @@
 #
 # The configuration directory defaults to ~/.claude and can be overridden with
 # CLAUDE_CONFIG_DIR, the same variable Claude Code itself uses.
+#
+# Each agent's model and effort level can be overridden with CLAUDE_*_MODEL and
+# CLAUDE_*_EFFORT, either in the environment or in the repository's .env file
+# (see .env.example). Setting one to an empty value omits it from the front matter.
 
 set -euo pipefail
 
@@ -31,6 +35,15 @@ source "$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)/lib/installer.sh"
 TOOL_NAME="Claude Code"
 HOME_ENV_VAR="CLAUDE_CONFIG_DIR"
 DEFAULT_HOME="$HOME/.claude"
+
+# Prints an agent's model front matter. Arguments: the agent's variable prefix
+# (e.g. PLANNING), its default model and its default effort level.
+claude_agent_frontmatter() {
+    local model_var="CLAUDE_$1_MODEL" effort_var="CLAUDE_$1_EFFORT" model effort
+    model="${!model_var-$2}"
+    effort="${!effort_var-$3}"
+    join_lines "${model:+model: $model}" "${effort:+effort: $effort}"
+}
 
 # Installs commands/<name>.md as skills/<name>/SKILL.md; everything else keeps its path.
 install_path() {
@@ -61,12 +74,9 @@ disable-model-invocation: true'
 
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: Read, Write, Edit, Bash'
-    planning-frontmatter       'model: claude-sonnet-5-5
-effort: medium'
-    implementation-frontmatter 'model: claude-haiku-5-5
-effort: high'
-    verification-frontmatter   'model: claude-haiku-5-5
-effort: high'
+    planning-frontmatter       "$(claude_agent_frontmatter PLANNING claude-sonnet-5-5 medium)"
+    implementation-frontmatter "$(claude_agent_frontmatter IMPLEMENTATION claude-haiku-5-5 high)"
+    verification-frontmatter   "$(claude_agent_frontmatter VERIFICATION claude-haiku-5-5 high)"
 
     # Tool agents use to run shell commands.
     shell-tool 'the `Bash` tool'

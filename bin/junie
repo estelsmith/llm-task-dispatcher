@@ -12,6 +12,10 @@
 # PLACEHOLDERS below as they are copied into the Junie home directory.
 #
 # The Junie home directory defaults to ~/.junie and can be overridden with JUNIE_HOME.
+#
+# Each agent's model and reasoning level can be overridden with JUNIE_*_MODEL and
+# JUNIE_*_REASONING, either in the environment or in the repository's .env file
+# (see .env.example). Setting one to an empty value omits it from the front matter.
 
 set -euo pipefail
 
@@ -26,6 +30,18 @@ source "$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)/lib/installer.sh"
 TOOL_NAME="Junie"
 HOME_ENV_VAR="JUNIE_HOME"
 DEFAULT_HOME="$HOME/.junie"
+
+# Prints an agent's model front matter. Arguments: the agent's variable prefix
+# (e.g. PLANNING), its default model and its default reasoning level.
+junie_agent_frontmatter() {
+    local model_var="JUNIE_$1_MODEL" reasoning_var="JUNIE_$1_REASONING" model reasoning
+    model="${!model_var-$2}"
+    reasoning="${!reasoning_var-$3}"
+    join_lines \
+        "${model:+model: \"$model\"}" \
+        "${reasoning:+reasoningLevel: \"$reasoning\"}" \
+        'allowPromptArgument: true'
+}
 
 # Junie-specific placeholder values, as alternating name/value pairs.
 # A value may span multiple lines and may be empty.
@@ -42,15 +58,9 @@ PLACEHOLDERS=(
 
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]'
-    planning-frontmatter 'model: "sonnet"
-reasoningLevel: "medium"
-allowPromptArgument: true'
-    implementation-frontmatter 'model: "haiku"
-reasoningLevel: "high"
-allowPromptArgument: true'
-    verification-frontmatter 'model: "haiku"
-reasoningLevel: "high"
-allowPromptArgument: true'
+    planning-frontmatter "$(junie_agent_frontmatter PLANNING sonnet medium)"
+    implementation-frontmatter "$(junie_agent_frontmatter IMPLEMENTATION haiku high)"
+    verification-frontmatter "$(junie_agent_frontmatter VERIFICATION haiku high)"
 
     # Tool agents use to run shell commands.
     shell-tool '`Bash`'

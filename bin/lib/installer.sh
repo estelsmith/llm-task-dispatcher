@@ -13,6 +13,10 @@
 # A script may also redefine install_path() after sourcing this file to change
 # where a repository file is installed (e.g. commands as Claude Code skills).
 #
+# Sourcing this file loads the optional .env file at the repository root (see
+# .env.example), so scripts can use its settings when defining PLACEHOLDERS.
+# Variables already set in the environment take precedence over the .env file.
+#
 # Repository files are vendor-neutral templates. Install-time placeholders use
 # the {{name}} syntax; single-brace {name} fields are left untouched because they
 # are template fields meant for the agent itself (e.g. {time} in log entries).
@@ -25,11 +29,49 @@ REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Repository directories that are mirrored into the tool's home directory.
 MANAGED_DIRS=(commands agents)
 
+# Optional KEY=value settings file read by load_env.
+ENV_FILE="$REPO_ROOT/.env"
+
 if [[ -t 1 ]]; then
     RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RESET=$'\033[0m'
 else
     RED=""; GREEN=""; YELLOW=""; RESET=""
 fi
+
+# Loads KEY=value lines from ENV_FILE, if it exists. Blank lines, # comments and
+# a leading "export " are ignored, and one pair of surrounding quotes is stripped.
+# The file is parsed rather than sourced, and variables that are already set in
+# the environment are left alone.
+load_env() {
+    local line key value
+    [[ -f "$ENV_FILE" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line#export }"
+        if [[ ! "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            echo "${RED}error:${RESET} invalid line in $ENV_FILE: $line" >&2
+            exit 1
+        fi
+        key="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[2]}"
+        if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        fi
+        [[ -n "${!key+set}" ]] || export "$key=$value"
+    done < "$ENV_FILE"
+}
+
+# Prints the non-empty arguments joined by newlines. Used to build multi-line
+# front matter values where some fields are optional.
+join_lines() {
+    local out="" line
+    for line in "$@"; do
+        [[ -n "$line" ]] && out+="${out:+$'\n'}$line"
+    done
+    printf '%s' "$out"
+}
 
 init_home_dir() {
     TARGET_HOME_DIR="${!HOME_ENV_VAR:-$DEFAULT_HOME}"
@@ -164,6 +206,11 @@ cmd_doctor() {
     rendered="$(mktemp)"
     echo "${TOOL_NAME} home: $TARGET_HOME_DIR"
     echo "Repository: $REPO_ROOT"
+    if [[ -f "$ENV_FILE" ]]; then
+        echo "Settings: $ENV_FILE"
+    else
+        echo "Settings: defaults (no .env file)"
+    fi
     echo
     while IFS= read -r rel; do
         dest="$TARGET_HOME_DIR/$(install_path "$rel")"
@@ -206,3 +253,5 @@ main() {
             ;;
     esac
 }
+
+load_env

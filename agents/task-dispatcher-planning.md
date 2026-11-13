@@ -25,6 +25,9 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, a
    - **Architectural Constraints & Guidelines:** Key design choices, dependencies, and patterns.
    - **Implementation Steps:** Sequenced, concrete tasks.
    - **Acceptance Criteria Checklist:** Unchecked markdown boxes (`- [ ]`) specifying verifiable conditions.
+     Acceptance criteria describe only the final, correct state of the work. Never add criteria that apply to a
+     single attempt; put attempt-specific instructions (e.g. a deliberate failure on attempt 1) in the Implementation
+     Steps instead, labelled with the attempt they apply to.
 
 4. **Report Back:** End your work with the Planning Report below as your final response.
 
@@ -34,7 +37,7 @@ Your final response must be exactly this structure:
 
 ```markdown
 ## Planning Report
-**Log:** <one-line synopsis of what you did, for the execution log>
+**Log:** <one sentence, at most ~150 characters, summarizing what you did, for the execution log>
 
 ### Plan
 #### Target Files

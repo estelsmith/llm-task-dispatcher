@@ -40,6 +40,14 @@ Get the time by running the command for your platform via {{shell-tool}}:
 - **Windows PowerShell:** `Get-Date -Format 'yyyy-MM-dd HH:mm:ss'`
 - **Windows `cmd.exe`:** `powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'"`. Never run a bare `date` in `cmd.exe`; it prompts to change the system date.
 
+### Editing Task Files
+
+Edit task files directly with your normal file read/edit/move tools, one change at a time. Never write or run helper scripts or programs (Python, Node, shell scripts, regex rewrite pipelines, temporary staging files, etc.) to generate, rewrite, or bulk-edit task files, and never read the time any way other than described under **Timestamps**.
+
+### Report Format in Spawn Prompts
+
+Every time you spawn a sub-agent (including resends and continuation spawns), end the spawn prompt by restating the exact report format it must return, as listed for its phase below. Do not rely on the agent's own instructions alone.
+
 ### Continuation Spawns
 
 Sometimes a sub-agent must be spawned again for an attempt whose work may already be partly or fully done (a resend that cannot reach the original instance, or a resumed task). In that case, tell the new instance explicitly that it is continuing an interrupted attempt: it must inspect the current workspace first, do only the work that is still missing, and report all changes made for this attempt, including those that were already present.
@@ -213,6 +221,7 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 
 ### Phase 1: Planning
 1. **Delegate via {{spawn-agent}}:** Spawn the planning sub-agent `task-dispatcher-planning`. Pass the task file path and, when re-planning, point it to the `# Human Rejection & Feedback` section.
+   Required report format: a `## Planning Report` heading, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Plan` (with `#### Target Files`, `#### Architectural Constraints & Guidelines`, `#### Implementation Steps`, `#### Acceptance Criteria`) and optionally `### Research Notes`. No other headings.
 2. **Record Planning Report:**
     - Log: `- {time} [planning] <Log line from the report>`
     - Write the report's `### Plan` content to the `## Plan` section of the task file (replacing any previous plan).
@@ -223,6 +232,7 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 
 ### Phase 2: Implementation
 1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`. Pass the task file path and the attempt number (the frontmatter `attempt`). On a retry, point it to the latest `FAIL` attempt under `## Verification Feedback`; after a human rejection, point it to the `# Human Rejection & Feedback` section.
+   Required report format: a `## Implementation Report` heading, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Changes`, `### Checks Run`, and optionally `### Notes`. No other headings.
 2. **Record Implementation Report:**
     - Log: `- {time} [implementation] <Log line from the report>`
     - Write the report's `### Changes`, `### Checks Run`, and `### Notes` (if present) under `## Implementation Details` → `### Attempt N`.
@@ -232,19 +242,21 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 
 ### Phase 3: Verification
 1. **Delegate via {{spawn-agent}}:** Spawn the verification sub-agent `task-dispatcher-verification`. Pass the task file path and the attempt number (the frontmatter `attempt`).
+   Required report format: a `## Verification Report` heading, then a `**Verdict:** PASS` or `**Verdict:** FAIL` line, a `**Log:**` line (one sentence, at most ~150 characters), then `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and optionally `### Notes`. No other headings or fields; anything else goes under `### Notes`.
 2. **Record Verification Report:**
     - Log: `- {time} [verification] <Log line from the report>`
-    - Write the report's `**Verdict:**` line, `### Acceptance Criteria`, `### Checks Run`, and `### Failure Details` (FAIL only) under `## Verification Feedback` → `### Attempt N`.
-3. **Route on the report's `**Verdict:**`.** Treat any verdict other than an explicit `PASS` as `FAIL`.
+    - Write the report's `**Verdict:**` line, `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and `### Notes` (if present) under `## Verification Feedback` → `### Attempt N`.
+3. **Route on the report's `**Verdict:**`.** Treat any verdict other than an explicit `PASS` as `FAIL`. Also treat a `PASS` as `FAIL` if any criterion in the report's `### Acceptance Criteria` is unchecked (`- [ ]`), or if any criterion under `## Plan` is missing from it.
 
 * **If `PASS`:**
-    - Mark the acceptance criteria under `## Plan` as completed (`- [x]`) according to the report's `### Acceptance Criteria`.
+    - Tick each acceptance criterion under `## Plan` (`- [x]`) individually, only where the report marks the matching criterion `[x]`. Never tick criteria in bulk.
     - Set `status: COMPLETED` and `active_agent: none` in frontmatter.
+    - Log `- {time} [router] Verification passed; task completed and moved to completed/.`
     - Move the file from `{{tasks-dir}}/in-progress/<target-file>` to `{{tasks-dir}}/completed/<target-file>`.
     - Present a final summary to the user, including highlights of the changes made since the baseline and the checks the verifier ran.
 
 * **If `FAIL`:**
-    - **If `retry_count + 1` > `max_retries`:** Set `retry_count` to that value, `status: FAILED` and `active_agent: none` in one frontmatter edit, log `- {time} [router] Retry limit reached; halted pipeline.`, halt the pipeline, and alert the user with the failure details.
+    - **If `retry_count + 1` > `max_retries`:** Set `retry_count` to that value, `status: FAILED` and `active_agent: none` in one frontmatter edit, log `- {time} [router] Retry limit reached; task marked FAILED and pipeline halted.`, halt the pipeline, and alert the user with the failure details.
     - **Otherwise:**
       - Log `- {time} transitioned from verification to implementation`.
       - In one frontmatter edit, increment `retry_count`, increment `attempt`, and set `active_agent: implementation`. Then return to Phase 2.

@@ -29,6 +29,7 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, t
 
 3. **Evaluate Results:**
    - Check every acceptance criterion against the changes you inspected and the command results.
+   - Judge the work against the final, correct state described by the plan. If a criterion describes the pipeline process itself rather than the work (e.g. "a failing test counts as FAIL"), apply it as guidance, mark it `[x]`, and mention it in `### Notes`.
    - The verdict is `PASS` only if all checks succeed and every acceptance criterion is met; otherwise it is `FAIL`.
    - Do not fix any problems you find; describe them so the implementation agent can fix them.
 
@@ -52,7 +53,12 @@ Your final response must be exactly this structure:
 
 ### Failure Details
 <only for FAIL: relevant error output and a concise description of what must be fixed; omit this section on PASS>
+
+### Notes
+<optional: caveats, things you could not verify, or other observations; omit this section if there are none>
 ```
+
+Do not add any other headings, fields, or free-form lines outside this structure; put anything else under `### Notes`.
 
 ## Rules & Constraints
 - Read-only on application code; do not modify source files or tests.

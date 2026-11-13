@@ -40,7 +40,7 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, t
 Your final response must be exactly this structure:
 
 ```markdown
-## Verification Report
+**Report:** Verification
 **Verdict:** PASS | FAIL
 **Log:** <one sentence, at most ~150 characters, summarizing what you did and the outcome, for the execution log>
 

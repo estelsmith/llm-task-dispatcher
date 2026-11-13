@@ -36,7 +36,7 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, a
 Your final response must be exactly this structure:
 
 ```markdown
-## Planning Report
+**Report:** Planning
 **Log:** <one sentence, at most ~150 characters, summarizing what you did, for the execution log>
 
 ### Plan

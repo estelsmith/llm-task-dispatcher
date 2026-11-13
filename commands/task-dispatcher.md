@@ -221,13 +221,13 @@ Every task goes through the full Tri-Agent pipeline, regardless of its size or c
 Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrating main agent. Sub-agents run one at a time, and each phase follows the same cycle:
 
 1. **Spawn:** Delegate to the required sub-agent by its exact name (see Operating Rules), passing the task file path `{{tasks-dir}}/in-progress/<target-file>` and the phase-specific context listed below. Sub-agents read the task file but never modify it.
-2. **Receive Report:** The sub-agent finishes with a report in the format defined in its instructions. If the report is missing or does not follow the format, request it once: if {{spawn-agent}} can send a follow-up message to the same sub-agent instance, ask that instance to resend the report in the required format; otherwise, do a continuation spawn of the same agent (see Operating Rules). If the report is still unusable, follow the Unusable report rule.
+2. **Receive Report:** The sub-agent finishes with a report in the format defined in its instructions. Validate it strictly against the required format for its phase: the `**Report:**` first line, every required field and section with its exact name and heading level, and no extra headings, fields, or free-form lines. Any deviation, however small or harmless it seems (a different heading level, a renamed section, a missing `**Log:**` line, an extra field), makes the report invalid. Never accept, repair, reinterpret, or record an invalid report yourself, and never decide on your own that a deviation is acceptable. If the report is missing or invalid, request it once, naming exactly which parts deviate: if {{spawn-agent}} can send a follow-up message to the same sub-agent instance, ask that instance to resend the report in the required format; otherwise, do a continuation spawn of the same agent (see Operating Rules). If the resent report is still invalid, follow the Unusable report rule.
 3. **Record:** Log the report's `**Log:**` line as `- {time} [{agent}] <synopsis>` and write the report content into the task file as described for each phase.
 4. **Route:** Update the frontmatter, log the phase transition, and continue with the next phase.
 
 ### Phase 1: Planning
 1. **Delegate via {{spawn-agent}}:** Spawn the planning sub-agent `task-dispatcher-planning`. Pass the task file path and, when re-planning, point it to the `# Human Rejection & Feedback` section.
-   Required report format: a `## Planning Report` heading, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Plan` (with `#### Target Files`, `#### Architectural Constraints & Guidelines`, `#### Implementation Steps`, `#### Acceptance Criteria`) and optionally `### Research Notes`. No other headings.
+   Required report format: a `**Report:** Planning` first line, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Plan` (with `#### Target Files`, `#### Architectural Constraints & Guidelines`, `#### Implementation Steps`, `#### Acceptance Criteria`) and optionally `### Research Notes`. No other headings.
 2. **Record Planning Report:**
     - Log: `- {time} [planning] <Log line from the report>`
     - Write the report's `### Plan` content to the `## Plan` section of the task file (replacing any previous plan).
@@ -238,7 +238,7 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 
 ### Phase 2: Implementation
 1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`. Pass the task file path and the attempt number (the frontmatter `attempt`). On a retry, point it to the latest `FAIL` attempt under `## Verification Feedback`; after a human rejection, point it to the `# Human Rejection & Feedback` section.
-   Required report format: a `## Implementation Report` heading, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Changes`, `### Checks Run`, and optionally `### Notes`. No other headings.
+   Required report format: a `**Report:** Implementation` first line, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Changes`, `### Checks Run`, and optionally `### Notes`. No other headings.
 2. **Record Implementation Report:**
     - Log: `- {time} [implementation] <Log line from the report>`
     - Write the report's `### Changes`, `### Checks Run`, and `### Notes` (if present) under `## Implementation Details` → `### Attempt N`.
@@ -248,7 +248,7 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 
 ### Phase 3: Verification
 1. **Delegate via {{spawn-agent}}:** Spawn the verification sub-agent `task-dispatcher-verification`. Pass the task file path and the attempt number (the frontmatter `attempt`).
-   Required report format: a `## Verification Report` heading, then a `**Verdict:** PASS` or `**Verdict:** FAIL` line, a `**Log:**` line (one sentence, at most ~150 characters), then `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and optionally `### Notes`. No other headings or fields; anything else goes under `### Notes`.
+   Required report format: a `**Report:** Verification` first line, then a `**Verdict:** PASS` or `**Verdict:** FAIL` line, a `**Log:**` line (one sentence, at most ~150 characters), then `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and optionally `### Notes`. No other headings or fields; anything else goes under `### Notes`.
 2. **Record Verification Report:**
     - Log: `- {time} [verification] <Log line from the report>`
     - Write the report's `**Verdict:**` line, `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and `### Notes` (if present) under `## Verification Feedback` → `### Attempt N`.

@@ -64,6 +64,9 @@ PLACEHOLDERS=(
 
     # Tool agents use to run shell commands.
     shell-tool '`Bash`'
+
+    # Tools the dispatcher uses to create and edit task files.
+    file-edit-tools 'your file create/edit tools (e.g. `create`, `search_replace`, `multi_edit`)'
 )
 
 main "$@"

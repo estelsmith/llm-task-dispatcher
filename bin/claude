@@ -80,6 +80,9 @@ disable-model-invocation: true'
 
     # Tool agents use to run shell commands.
     shell-tool 'the `Bash` tool'
+
+    # Tools the dispatcher uses to create and edit task files.
+    file-edit-tools 'the `Write` and `Edit` tools'
 )
 
 main "$@"

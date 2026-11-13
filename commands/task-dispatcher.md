@@ -32,7 +32,23 @@ Rules:
 
 ### Editing Task Files
 
-Edit task files directly with your normal file read/edit/move tools, one change at a time. Never write or run helper scripts or programs (Python, Node, shell scripts, regex rewrite pipelines, temporary staging files, etc.) to generate, rewrite, or bulk-edit task files.
+Create and edit task files only with {{file-edit-tools}}, one change at a time. Never use {{shell-tool}} to write, append to, or rewrite task files: no `cat >`/`cat >>`, heredocs, `echo >>`, `tee`, `sed`, `awk`, `perl`, Python, Node, helper scripts, regex rewrite pipelines, or temporary staging files.
+
+The only exceptions are moving a task file between task folders and creating the task directories, which you do with a single plain `mv` or `mkdir -p` command via {{shell-tool}}, using paths relative to the project root and never combined with any other command. Read-only commands (e.g. `git rev-parse`, `git status`) are also allowed.
+
+### Sequential Execution
+
+Spawn exactly one sub-agent at a time, and wait for its report before doing anything else. Never spawn sub-agents in parallel, and never start the next phase or attempt until the previous report has been fully recorded in the task file and the checkpoint below has passed.
+
+### Checkpoint Before Every Spawn
+
+Right before every spawn (including resends and continuation spawns), re-read the task file from disk and confirm that everything the previous step should have written is actually there:
+
+- **Before planning:** the task file is in `{{tasks-dir}}/in-progress/`, its frontmatter has `status: IN_PROGRESS` and `active_agent: planning`, and the `## Baseline` section exists.
+- **Before implementation:** the `## Plan` section contains the current plan with its acceptance criteria, the `[planning]` log entry and the planning → implementation transition are logged, and the frontmatter `attempt` and `active_agent: implementation` are set. On a retry, the latest `### Attempt N` under `## Verification Feedback` (the `FAIL` that triggered it) is recorded.
+- **Before verification:** `### Attempt N` for the current `attempt` exists under `## Implementation Details`, the matching `[implementation]` log entry and the implementation → verification transition are logged, and `active_agent: verification` is set.
+
+If anything is missing, write it now if you still have the report it came from; otherwise, or if the write fails, set `status: FAILED`, log `- {time} [router] Checkpoint failed before <agent>: <what is missing>; halted pipeline.`, halt, and alert the user. Never spawn a sub-agent when the checkpoint has not passed.
 
 ### Report Format in Spawn Prompts
 

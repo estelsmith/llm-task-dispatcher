@@ -30,19 +30,9 @@ Rules:
 3. **Missing mid-run:** If a required agent cannot be spawned once the pipeline has started, set `status: FAILED`, log `- {time} [router] Required sub-agent <name> unavailable; halted pipeline.`, halt, and alert the user.
 4. **Unusable report:** If a sub-agent still does not return a report in its required format after one resend request, set `status: FAILED`, log `- {time} [router] <agent> did not return a valid report; halted pipeline.`, halt, and alert the user.
 
-### Timestamps
-
-Every `{time}` value must be the real current local time, read from the system right before you write the entry, in the format `YYYY-MM-DD HH:MM:SS`. Never estimate, guess, or invent a timestamp. Entries written together in one step may share a timestamp.
-
-Get the time by running the command for your platform via {{shell-tool}}:
-
-- **macOS, Linux, WSL, Git Bash, or any other POSIX shell:** `date '+%Y-%m-%d %H:%M:%S'` (works with both GNU and BSD `date`).
-- **Windows PowerShell:** `Get-Date -Format 'yyyy-MM-dd HH:mm:ss'`
-- **Windows `cmd.exe`:** `powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'"`. Never run a bare `date` in `cmd.exe`; it prompts to change the system date.
-
 ### Editing Task Files
 
-Edit task files directly with your normal file read/edit/move tools, one change at a time. Never write or run helper scripts or programs (Python, Node, shell scripts, regex rewrite pipelines, temporary staging files, etc.) to generate, rewrite, or bulk-edit task files, and never read the time any way other than described under **Timestamps**.
+Edit task files directly with your normal file read/edit/move tools, one change at a time. Never write or run helper scripts or programs (Python, Node, shell scripts, regex rewrite pipelines, temporary staging files, etc.) to generate, rewrite, or bulk-edit task files.
 
 ### Report Format in Spawn Prompts
 
@@ -185,7 +175,7 @@ Every entry must follow one of these two independent formats:
 
 1. **Agent Execution Notes Entry:**
    - Format: `- {time} [{agent}] <short synopsis of what the agent did>`
-   - `{time}`: Current timestamp, obtained as described under **Timestamps** (e.g. `2026-10-29 07:15:00`).
+   - `{time}`: Current timestamp (e.g. `2026-10-29 07:15:00`).
    - `[{agent}]`: Name/role of the responsible agent (e.g., `[planning]`, `[implementation]`, `[verification]`, `[router]`).
    - `<short synopsis>`: One sentence of at most about 150 characters. For sub-agents, use the `**Log:**` line from their report; if it is longer than one sentence or about 150 characters, shorten it without changing its meaning.
    - Example: `- 2026-10-29 07:15:00 [planning] Completed codebase discovery and formulated implementation plan with acceptance criteria.`

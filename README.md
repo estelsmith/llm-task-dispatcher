@@ -109,7 +109,8 @@ The defaults are:
 | Implementation | `haiku`, high      | `claude-haiku-5-5`, high     |
 | Verification   | `haiku`, high      | `claude-haiku-5-5`, high     |
 
-The dispatcher itself has no model setting and uses your session's model.
+The dispatcher itself has no model setting and uses your session's model. It's preferable to choose Haiku 5.5 on medium
+effort when dispatching tasks.
 
 To use other models, such as custom model profiles behind an AI gateway, copy [`.env.example`](.env.example) to `.env`,
 uncomment the settings you want, and run `install` again. `.env` is gitignored, and variables set in your shell take

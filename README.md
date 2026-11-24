@@ -113,7 +113,9 @@ The dispatcher itself has no model setting and uses your session's model. It's p
 effort when dispatching tasks.
 
 To use other models, such as custom model profiles behind an AI gateway, copy [`.env.example`](.env.example) to `.env`,
-uncomment the settings you want, and run `install` again. `.env` is gitignored, and variables set in your shell take
+uncomment the settings you want, and run `install` again. Set `JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or
+`CLAUDE_DEFAULT_MODEL` / `CLAUDE_DEFAULT_EFFORT` to apply a default model or reasoning effort to all agents without a
+per-agent override. `.env` is gitignored, and variables set in your shell take
 precedence over it.
 
 ```shell

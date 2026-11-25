@@ -29,7 +29,7 @@ For Claude Code, run `bin/claude install` instead (or as well).
                                       ▼
  ┌─────────────────────────────────────────────────────────────────────────┐
  │                     Task Dispatcher (your session)                      │
- │       Moves task files, writes logs, counts retries, routes work        │
+ │   Writes logs, moves files, counts retries/continuations, routes work   │
  │              Uses your session's model and reasoning level              │
  └─────────────────────────────────────────────────────────────────────────┘
            │ spawn                    │ spawn                    │ spawn
@@ -44,14 +44,21 @@ For Claude Code, run `bin/claude install` instead (or as well).
                                      (up to max_retries times)   completed/
 ```
 
+For large tasks, Planning and Implementation can also checkpoint with `PARTIAL` and loop with a fresh context up to
+`max_continuations` times (default `5`) before moving to the next phase.
+
 - **Task Dispatcher** ([`commands/task-dispatcher.md`](commands/task-dispatcher.md)): the slash command. It runs in your
   current session with your session's model. It's the only part that writes task state: it moves task files between
-  folders, records the execution log and phase changes, counts retries, and decides where the task goes next. It never
-  edits code itself, and it stops instead of improvising if a required sub-agent isn't available.
+  folders, records the execution log and phase changes, counts retries and `PARTIAL` continuations, splits large
+  implementation plans into step batches, re-spawns `Planning` or `Implementation` on `PARTIAL` checkpoints, and decides
+  where the task goes next. It never edits code itself, and it stops instead of improvising if a required sub-agent
+  isn't available.
 - **Planning** ([`agents/task-dispatcher-planning.md`](agents/task-dispatcher-planning.md)): explores the codebase and
-  reports a plan with target files, steps and acceptance criteria. It can also report research notes.
+  reports a plan with target files, steps and acceptance criteria. It can also report research notes, and for large
+  codebases it can checkpoint intermediate discovery (`PARTIAL`) before finalizing the plan.
 - **Implementation** ([`agents/task-dispatcher-implementation.md`](agents/task-dispatcher-implementation.md)): makes the
-  code changes from the plan, runs the project's checks, and reports what it changed.
+  code changes from the plan, runs the project's checks, and reports what it changed. For large plans, it works through
+  bounded step batches and returns `PARTIAL` checkpoints so each continuation starts with a fresh context.
 - **Verification** ([`agents/task-dispatcher-verification.md`](agents/task-dispatcher-verification.md)): reviews the
   diff, runs tests and linters, and reports a `PASS` or `FAIL` verdict. On `FAIL`, the dispatcher sends the task back to
   implementation with the failure details.
@@ -73,8 +80,13 @@ tasks/
 ├── pending/      # New task requests you write
 ├── in-progress/  # Tasks being worked on, with their plan, log and attempts
 ├── completed/    # Tasks that passed verification
-└── discovery/    # Research notes reported by the planning agent
+└── discovery/    # Research notes and in-progress planning checkpoints
 ```
+
+To resume an interrupted task, re-run `/task-dispatcher` on the same task file (now in `in-progress/`); the dispatcher
+picks up from the recorded `active_agent`, `attempt`, and any saved `PARTIAL` checkpoint instead of restarting from
+scratch. You can also tune `max_retries` (default `3`) and `max_continuations` (default `5`) in the task's
+frontmatter, or ask for chunked execution in `# Human Request`.
 
 To reject a completed task, run the command with a reason, for example
 `/task-dispatcher Reject my-task.md: the new endpoint is missing input validation`. The dispatcher sends it back to

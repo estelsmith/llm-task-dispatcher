@@ -85,8 +85,18 @@ tasks/
 
 To resume an interrupted task, re-run `/task-dispatcher` on the same task file (now in `in-progress/`); the dispatcher
 picks up from the recorded `active_agent`, `attempt`, and any saved `PARTIAL` checkpoint instead of restarting from
-scratch. You can also tune `max_retries` (default `3`) and `max_continuations` (default `5`) in the task's
-frontmatter, or ask for chunked execution in `# Human Request`.
+scratch.
+
+You can override `max_retries` (default `3`) and `max_continuations` (default `5`), or pass extra guidance such as
+requesting chunked execution, in three ways:
+
+- **Per run in the command prompt:**
+  - Junie: `/task-dispatcher task=my-task.md prompt="use a max continuation count of 10. This is a large change."`
+  - Claude Code: `/task-dispatcher my-task.md use a max continuation count of 10. This is a large change.`
+- **Per task in the file:** set `max_retries` / `max_continuations` in the task's frontmatter, or ask for chunked
+  execution in `# Human Request`.
+- **Globally for both Junie and Claude Code:** set `TASK_DISPATCHER_MAX_RETRIES` and `TASK_DISPATCHER_MAX_CONTINUATIONS`
+  in `.env` (see [`.env.example`](.env.example)) or your shell environment and re-run `install`.
 
 To reject a completed task, run the command with a reason, for example
 `/task-dispatcher Reject my-task.md: the new endpoint is missing input validation`. The dispatcher sends it back to
@@ -124,11 +134,12 @@ The defaults are:
 The dispatcher itself has no model setting and uses your session's model. It's preferable to choose Sonnet 5.5 on low
 effort, or Gemini 4 Hydrogen on low effort, when dispatching tasks.
 
-To use other models, such as custom model profiles behind an AI gateway, copy [`.env.example`](.env.example) to `.env`,
-uncomment the settings you want, and run `install` again. Set `JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or
-`CLAUDE_DEFAULT_MODEL` / `CLAUDE_DEFAULT_EFFORT` to apply a default model or reasoning effort to all agents without a
-per-agent override. `.env` is gitignored, and variables set in your shell take
-precedence over it.
+To use other models, such as custom model profiles behind an AI gateway, or to change the default `max_retries` and
+`max_continuations` limits (`TASK_DISPATCHER_MAX_RETRIES` / `TASK_DISPATCHER_MAX_CONTINUATIONS`), copy
+[`.env.example`](.env.example) to `.env`, uncomment the settings you want, and run `install` again. Set
+`JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or `CLAUDE_DEFAULT_MODEL` / `CLAUDE_DEFAULT_EFFORT` to apply a default
+model or reasoning effort to all agents without a per-agent override. `.env` is gitignored, and variables set in your
+shell take precedence over it.
 
 ```shell
 cp .env.example .env
@@ -144,7 +155,7 @@ bin/junie install
 | [`bin/junie`](bin/junie)       | Installer for Junie                                           |
 | [`bin/claude`](bin/claude)     | Installer for Claude Code                                     |
 | [`bin/lib/`](bin/lib/)         | Shared installer code                                         |
-| [`.env.example`](.env.example) | Optional model settings                                       |
+| [`.env.example`](.env.example) | Optional model and pipeline settings                          |
 
 The files in [`commands/`](commands/) and [`agents/`](agents/) are tool-neutral templates. They contain `{{placeholder}}`
 values that each installer fills in with its tool's values (paths, tool names, front matter) when it copies them.

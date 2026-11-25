@@ -17,6 +17,10 @@
 # .env.example), so scripts can use its settings when defining PLACEHOLDERS.
 # Variables already set in the environment take precedence over the .env file.
 #
+# Common settings shared across tools (applied via COMMON_PLACEHOLDERS):
+#   TASK_DISPATCHER_MAX_RETRIES        Default max_retries (default: 3)
+#   TASK_DISPATCHER_MAX_CONTINUATIONS  Default max_continuations (default: 5)
+#
 # Repository files are vendor-neutral templates. Install-time placeholders use
 # the {{name}} syntax; single-brace {name} fields are left untouched because they
 # are template fields meant for the agent itself (e.g. {time} in log entries).
@@ -73,6 +77,18 @@ join_lines() {
     printf '%s' "$out"
 }
 
+# Sets <out_var> to an integer environment variable or a default, failing if
+# a non-empty value is not a non-negative integer.
+read_int_setting() {
+    local out_var="$1" env_var="$2" default_val="$3" val
+    val="${!env_var:-$default_val}"
+    if [[ ! "$val" =~ ^[0-9]+$ ]]; then
+        echo "${RED}error:${RESET} $env_var must be a non-negative integer (got '$val')" >&2
+        exit 1
+    fi
+    printf -v "$out_var" '%s' "$val"
+}
+
 init_home_dir() {
     TARGET_HOME_DIR="${!HOME_ENV_VAR:-$DEFAULT_HOME}"
 }
@@ -125,12 +141,13 @@ list_managed_files() {
 # by its tool-specific value. Fails if any {{placeholder}} is left over.
 render() {
     local rel="$1" content key value i leftover
+    local all_placeholders=("${PLACEHOLDERS[@]}" "${COMMON_PLACEHOLDERS[@]}")
     # Append and strip a sentinel so trailing newlines survive command substitution.
     content="$(cat "$REPO_ROOT/$rel"; printf x)"
     content="${content%x}"
-    for ((i = 0; i < ${#PLACEHOLDERS[@]}; i += 2)); do
-        key="{{${PLACEHOLDERS[i]}}}"
-        value="${PLACEHOLDERS[i + 1]}"
+    for ((i = 0; i < ${#all_placeholders[@]}; i += 2)); do
+        key="{{${all_placeholders[i]}}}"
+        value="${all_placeholders[i + 1]}"
         if [[ -z "$value" ]]; then
             # Drop lines holding only an empty placeholder (e.g. in front matter).
             content="${content//$'\n'"$key"$'\n'/$'\n'}"
@@ -255,3 +272,11 @@ main() {
 }
 
 load_env
+
+read_int_setting _task_dispatcher_max_retries TASK_DISPATCHER_MAX_RETRIES 3
+read_int_setting _task_dispatcher_max_continuations TASK_DISPATCHER_MAX_CONTINUATIONS 5
+
+COMMON_PLACEHOLDERS=(
+    max-retries       "$_task_dispatcher_max_retries"
+    max-continuations "$_task_dispatcher_max_continuations"
+)

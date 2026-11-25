@@ -15,6 +15,15 @@ Target task parameter: {{task-argument}}
 
 Follow this protocol exactly as written. Never improvise, work around, or substitute a step you cannot carry out as specified. If any step cannot be performed as written, halt and report it to the user instead.
 
+### Invocation & Prompt Overrides
+
+`{{task-argument}}` and the user prompt may supply only a target task filename/path, or a target task together with extra instructions (for example, `prompt="use a max continuation count of 10. This is a large change."` or trailing instructions after the task filename). Separate the target task filename/path from any remaining instructions (**dispatcher prompt instructions**):
+
+- **Limit overrides (`max_retries`, `max_continuations`):** If the dispatcher prompt instructions specify a retry or continuation limit (e.g., `max_retries=5`, "max retries 5", `max_continuations=10`, "use a max continuation count of 10"), use that non-negative integer instead of the configured defaults (`{{max-retries}}` / `{{max-continuations}}`) or existing frontmatter values. If the requested limit is not a non-negative integer, tell the user and halt without modifying the task file.
+- **Additional prompt guidance:** If the dispatcher prompt instructions contain task context, constraints, or execution preferences beyond selecting the task and setting limits (e.g., `"This is a large change."`, `"use chunked execution"`, or focus hints):
+  - On **ingestion**, include that guidance under `# Human Request` (e.g., as a `> **Dispatcher Prompt Note:** ...` blockquote below the original request) so sub-agents and resumed runs see it.
+  - On **resume** or **rejection**, carry that guidance into the relevant phase's spawn prompt (and record it under `# Human Request` or `# Human Rejection & Feedback` if relevant to subsequent phases).
+
 ### Required Sub-Agents
 
 This pipeline requires these three custom sub-agents, each spawned by its exact name as its agent type:
@@ -85,7 +94,7 @@ If the target task or user prompt contains a rejection request (e.g., "Reject ta
     - Locate the target task file in `{{tasks-dir}}/completed/` or `{{tasks-dir}}/in-progress/`.
     - Ensure the task file is moved to (or remains in) `{{tasks-dir}}/in-progress/<target-file>` and set `status: IN_PROGRESS`.
     - Reset every acceptance criterion under `## Plan` to unchecked (`- [ ]`).
-    - Reset `retry_count: 0` and `continuation_count: 0`. Do not change `attempt`; attempt numbers keep counting up across rejections.
+    - Reset `retry_count: 0` and `continuation_count: 0`. If the invocation or user prompt specifies `max_retries` or `max_continuations` overrides, update those frontmatter fields as well. Do not change `attempt`; attempt numbers keep counting up across rejections.
 
 2. **Evaluate Rejection Scope (Routing Decision):**
    Analyze the human rejection reason to determine the target agent:
@@ -121,7 +130,7 @@ When invoked with target task `{{task-argument}}` (e.g., `logging-levels.md` or 
     - `git rev-parse HEAD` → `base_commit` (use `none` if it fails, e.g. no commits yet or not a git repository).
     - `git status --porcelain --untracked-files=all` → the `## Baseline` block (use `clean` if empty, or `not a git repository`).
 3. **Move to In-Progress:** Relocate file from `pending/` to `{{tasks-dir}}/in-progress/<target-file>`.
-4. **Format State Header:** Prepend standard YAML frontmatter and initial pipeline state around the original human request:
+4. **Format State Header:** Prepend standard YAML frontmatter and initial pipeline state around the original human request (if the pending file already had YAML frontmatter with `max_retries` or `max_continuations`, preserve those values unless overridden by the dispatcher prompt instructions; otherwise use `{{max-retries}}` and `{{max-continuations}}`):
     - `id`: the target file name without `.md` (e.g. `task-101-user-auth`).
     - `title`: a short title (at most about 8 words) summarizing the human request.
 
@@ -133,9 +142,9 @@ status: IN_PROGRESS
 active_agent: router
 attempt: 0
 retry_count: 0
-max_retries: 3
+max_retries: {{max-retries}}
 continuation_count: 0
-max_continuations: 5
+max_continuations: {{max-continuations}}
 base_commit: <git rev-parse HEAD output, or none>
 ---
 
@@ -159,7 +168,7 @@ Working tree before the pipeline started. Paths listed here were already modifie
 
 ### Resume Protocol
 
-When the target task is already in `{{tasks-dir}}/in-progress/`, read its frontmatter and continue from where it stopped. Keep the existing `## Baseline` and `base_commit`. If `continuation_count` or `max_continuations` is absent (legacy task file), treat them as `0` and `5`.
+When the target task is already in `{{tasks-dir}}/in-progress/`, read its frontmatter and continue from where it stopped. Keep the existing `## Baseline` and `base_commit`. If `max_retries` is absent (legacy task file), treat it as `{{max-retries}}`. If `continuation_count` or `max_continuations` is absent (legacy task file), treat them as `0` and `{{max-continuations}}`. If `status: IN_PROGRESS` and the dispatcher prompt instructions specify updated `max_retries` or `max_continuations`, update those frontmatter fields before continuing.
 
 - **`status: COMPLETED`:** tell the user it is completed and can be reopened with a rejection. Halt.
 - **`status: FAILED`:** tell the user why it failed (from the latest log entries and `## Verification Feedback`). Halt.
@@ -261,7 +270,7 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 ### Phase 2: Implementation
 1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`. Pass the task file path and the attempt number (the frontmatter `attempt`).
    - **Step batching:** Inspect `## Plan` (`#### Implementation Steps` and `#### Target Files`):
-     - On a retry after `FAIL` (when `continuation_count == 0`) or when `## Plan` has `<= 5` `#### Implementation Steps` and `<= 5` `#### Target Files` (and you are not continuing a `PARTIAL` attempt and `# Human Request` does not ask for chunked execution), spawn normally without restricting steps.
+     - On a retry after `FAIL` (when `continuation_count == 0`) or when `## Plan` has `<= 5` `#### Implementation Steps` and `<= 5` `#### Target Files` (and you are not continuing a `PARTIAL` attempt and `# Human Request` / dispatcher prompt instructions do not ask for chunked execution or indicate a large change), spawn normally without restricting steps.
      - Otherwise, assign an explicit, bounded batch of remaining `#### Implementation Steps` (e.g., 2–4 related steps) in the spawn prompt: instruct the agent to execute only that batch, then stop and return `**Status:** PARTIAL` if steps still remain, or `**Status:** COMPLETE` once all steps in `## Plan` are complete.
    - **Context pointers:** On a `PARTIAL` continuation (`continuation_count > 0`), point it to `## Implementation Details` → `### Attempt N` (`### Changes`, `### Remaining Work`, `### Handoff Context`) and instruct it to report cumulative `### Changes` for this attempt. If `continuation_count == max_continuations`, instruct it that this is the final allowed continuation and it must complete all remaining steps and return `**Status:** COMPLETE`. On a retry, point it to the latest `FAIL` attempt under `## Verification Feedback`; after a human rejection, point it to `# Human Rejection & Feedback`.
    Required report format: a `**Report:** Implementation` first line, a `**Status:** COMPLETE` or `**Status:** PARTIAL` second line, and a `**Log:**` line (one sentence, at most ~150 characters), followed by the exact sections for its status:

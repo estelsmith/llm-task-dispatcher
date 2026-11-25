@@ -44,9 +44,9 @@ Spawn exactly one sub-agent at a time, and wait for its report before doing anyt
 
 Right before every spawn (including resends and continuation spawns), re-read the task file from disk and confirm that everything the previous step should have written is actually there:
 
-- **Before planning:** the task file is in `{{tasks-dir}}/in-progress/`, its frontmatter has `status: IN_PROGRESS` and `active_agent: planning`, and the `## Baseline` section exists.
-- **Before implementation:** the `## Plan` section contains the current plan with its acceptance criteria, the `[planning]` log entry and the planning → implementation transition are logged, and the frontmatter `attempt` and `active_agent: implementation` are set. On a retry, the latest `### Attempt N` under `## Verification Feedback` (the `FAIL` that triggered it) is recorded.
-- **Before verification:** `### Attempt N` for the current `attempt` exists under `## Implementation Details`, the matching `[implementation]` log entry and the implementation → verification transition are logged, and `active_agent: verification` is set.
+- **Before planning:** the task file is in `{{tasks-dir}}/in-progress/`, its frontmatter has `status: IN_PROGRESS` and `active_agent: planning`, and the `## Baseline` section exists. On a `PARTIAL` continuation (`continuation_count > 0`), `{{tasks-dir}}/discovery/<id>-research.md` exists and contains `## Planning Progress` with `### Discovery Progress` and `### Remaining Discovery`.
+- **Before implementation:** the `## Plan` section contains the current plan with its acceptance criteria, the `[planning]` log entry and the planning → implementation transition are logged, and the frontmatter `attempt` and `active_agent: implementation` are set. On a retry, the latest `### Attempt N` under `## Verification Feedback` (the `FAIL` that triggered it) is recorded. On a `PARTIAL` continuation (`continuation_count > 0`), `## Implementation Details` → `### Attempt N` for the current `attempt` exists with `**Status:** PARTIAL`, `### Remaining Work`, and `### Handoff Context`, and `active_agent: implementation` and `attempt` remain unchanged.
+- **Before verification:** `### Attempt N` for the current `attempt` exists under `## Implementation Details` with `**Status:** COMPLETE` (never route a `PARTIAL` attempt to verification), the matching `[implementation]` log entry and the implementation → verification transition are logged, and `active_agent: verification` is set.
 
 If anything is missing, write it now if you still have the report it came from; otherwise, or if the write fails, set `status: FAILED`, log `- {time} [router] Checkpoint failed before <agent>: <what is missing>; halted pipeline.`, halt, and alert the user. Never spawn a sub-agent when the checkpoint has not passed.
 
@@ -56,7 +56,10 @@ Every time you spawn a sub-agent (including resends and continuation spawns), en
 
 ### Continuation Spawns
 
-Sometimes a sub-agent must be spawned again for an attempt whose work may already be partly or fully done (a resend that cannot reach the original instance, or a resumed task). In that case, tell the new instance explicitly that it is continuing an interrupted attempt: it must inspect the current workspace first, do only the work that is still missing, and report all changes made for this attempt, including those that were already present.
+Sometimes a sub-agent must be spawned again for a phase or attempt whose work is already partly or fully done:
+
+- **Interrupted / resend continuation:** A resend cannot reach the original instance, or a task is resumed after an interruption without a recorded `PARTIAL` report. Tell the new instance explicitly that it is continuing an interrupted pass: it must inspect the current workspace (and any prior `PARTIAL` state in the task or discovery file) first, do only the work that is still missing, and report cumulative progress for this phase/attempt (including changes that were already present).
+- **`PARTIAL` continuation (`continuation_count > 0`):** The previous instance exited with `**Status:** PARTIAL`. Point the new instance to the recorded handoff state (`{{tasks-dir}}/discovery/<id>-research.md` → `## Planning Progress` for planning, or `## Implementation Details` → `### Attempt N` for implementation), tell it to pick up from `### Remaining Discovery` / `### Remaining Work` and `### Handoff Context`, and instruct implementation continuations to report cumulative `### Changes` for the attempt.
 
 ---
 
@@ -82,7 +85,7 @@ If the target task or user prompt contains a rejection request (e.g., "Reject ta
     - Locate the target task file in `{{tasks-dir}}/completed/` or `{{tasks-dir}}/in-progress/`.
     - Ensure the task file is moved to (or remains in) `{{tasks-dir}}/in-progress/<target-file>` and set `status: IN_PROGRESS`.
     - Reset every acceptance criterion under `## Plan` to unchecked (`- [ ]`).
-    - Reset `retry_count: 0`. Do not change `attempt`; attempt numbers keep counting up across rejections.
+    - Reset `retry_count: 0` and `continuation_count: 0`. Do not change `attempt`; attempt numbers keep counting up across rejections.
 
 2. **Evaluate Rejection Scope (Routing Decision):**
    Analyze the human rejection reason to determine the target agent:
@@ -131,6 +134,8 @@ active_agent: router
 attempt: 0
 retry_count: 0
 max_retries: 3
+continuation_count: 0
+max_continuations: 5
 base_commit: <git rev-parse HEAD output, or none>
 ---
 
@@ -154,32 +159,38 @@ Working tree before the pipeline started. Paths listed here were already modifie
 
 ### Resume Protocol
 
-When the target task is already in `{{tasks-dir}}/in-progress/`, read its frontmatter and continue from where it stopped. Keep the existing `## Baseline` and `base_commit`.
+When the target task is already in `{{tasks-dir}}/in-progress/`, read its frontmatter and continue from where it stopped. Keep the existing `## Baseline` and `base_commit`. If `continuation_count` or `max_continuations` is absent (legacy task file), treat them as `0` and `5`.
 
 - **`status: COMPLETED`:** tell the user it is completed and can be reopened with a rejection. Halt.
 - **`status: FAILED`:** tell the user why it failed (from the latest log entries and `## Verification Feedback`). Halt.
 - **`status: IN_PROGRESS`:** log `- {time} [router] Resumed task at <active_agent> (attempt <attempt>).`, then by `active_agent`:
     - `router`: continue with **Section 4: Routing**.
-    - `planning`: run **Phase 1: Planning** (the new plan replaces any existing one).
-    - `implementation`: if `## Implementation Details` already contains `### Attempt <attempt>`, the report was recorded but not routed; continue with Phase 2 step 3 (Route). Otherwise run Phase 2 for the current `attempt` (do not increment it) as a continuation spawn.
+    - `planning`: run **Phase 1: Planning**. If `{{tasks-dir}}/discovery/<id>-research.md` contains `## Planning Progress` (or `continuation_count > 0`), run it as a `PARTIAL` continuation spawn pointing to `## Planning Progress`; otherwise run normally (the completed plan replaces any existing one).
+    - `implementation`: check `## Implementation Details` → `### Attempt <attempt>`:
+        - If `### Attempt <attempt>` exists with `**Status:** COMPLETE` (or no `**Status:**` line on legacy task files), the final report was recorded but not routed; continue with Phase 2 step 3 (`Route`).
+        - If `### Attempt <attempt>` exists with `**Status:** PARTIAL`, run Phase 2 for the current `attempt` (do not increment it) as a `PARTIAL` continuation spawn pointing to `### Attempt <attempt>`.
+        - If `### Attempt <attempt>` does not exist, run Phase 2 for the current `attempt` (do not increment it) as an interrupted-attempt continuation spawn.
     - `verification`: run **Phase 3: Verification** for the current `attempt`. Verification is read-only, so it is always safe to re-run.
 
 ### Task File Layout
 
 As the pipeline runs, you add the following sections under `# Agent Pipeline State`, after `## Agent Execution Log`, using the content of the sub-agent reports:
 
-- `## Plan` — The plan from the latest Planning Report. On re-planning, replace this section with the new plan.
-- `## Implementation Details` — One `### Attempt N` subsection per Implementation Report.
+- `## Plan` — The plan from the latest `COMPLETE` Planning Report. On re-planning, replace this section with the new plan.
+- `## Implementation Details` — One `### Attempt N` subsection per implementation attempt, starting with its `**Status:**` line (`PARTIAL` or `COMPLETE`).
 - `## Verification Feedback` — One `### Attempt N` subsection per Verification Report, `PASS` or `FAIL`, starting with its `**Verdict:**` line.
 
-`N` is always the frontmatter `attempt` value of the implementation attempt being reported on. A section never holds two subsections with the same attempt number: if one already exists for the current attempt (e.g. after a resume), replace it.
+`N` is always the frontmatter `attempt` value of the implementation attempt being reported on. A section never holds two subsections with the same attempt number: if one already exists for the current attempt (e.g. after a `PARTIAL` checkpoint or a resume), replace it.
+
+While planning is `PARTIAL`, intermediate discovery state lives in `{{tasks-dir}}/discovery/<id>-research.md` under `## Planning Progress` (replaced on each `PARTIAL` report and removed once planning returns `COMPLETE`).
 
 New log entries are always appended to the end of the `## Agent Execution Log` list.
 
-### Attempt & Retry Counters
+### Attempt, Retry & Continuation Counters
 
 - `attempt`: the implementation attempt number. Increment it by 1 in the same frontmatter edit that sets `active_agent: implementation`, every time a task is routed to implementation. Never reset it, not even after a human rejection. Use it for every `### Attempt N` heading and pass it to the implementation and verification sub-agents.
 - `retry_count`: the number of failed verifications since the task was last planned or rejected. It is used only for the retry limit, and is reset to `0` on a human rejection.
+- `continuation_count`: the number of `PARTIAL` checkpoints recorded in the current phase or attempt. Increment it by 1 on each `PARTIAL` report, halt with `status: FAILED` if `continuation_count + 1 > max_continuations`, and reset it to `0` on every phase transition, verification-failure retry, or human rejection.
 
 ### Agent Execution Log Specification
 
@@ -226,23 +237,49 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 4. **Route:** Update the frontmatter, log the phase transition, and continue with the next phase.
 
 ### Phase 1: Planning
-1. **Delegate via {{spawn-agent}}:** Spawn the planning sub-agent `task-dispatcher-planning`. Pass the task file path and, when re-planning, point it to the `# Human Rejection & Feedback` section.
-   Required report format: a `**Report:** Planning` first line, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Plan` (with `#### Target Files`, `#### Architectural Constraints & Guidelines`, `#### Implementation Steps`, `#### Acceptance Criteria`) and optionally `### Research Notes`. No other headings.
-2. **Record Planning Report:**
-    - Log: `- {time} [planning] <Log line from the report>`
-    - Write the report's `### Plan` content to the `## Plan` section of the task file (replacing any previous plan).
-    - If the report includes `### Research Notes`, write them to `{{tasks-dir}}/discovery/<id>-research.md` (append if the file exists).
-3. **Route:** Log `- {time} transitioned from planning to implementation`, set `active_agent: implementation` and increment `attempt` in the same frontmatter edit, and proceed to Phase 2.
+1. **Delegate via {{spawn-agent}}:** Spawn the planning sub-agent `task-dispatcher-planning`. Pass the task file path. When re-planning, point it to `# Human Rejection & Feedback`. On a `PARTIAL` continuation (`continuation_count > 0`), point it to `{{tasks-dir}}/discovery/<id>-research.md` (`## Planning Progress`) so it picks up from `### Remaining Discovery`; if `continuation_count == max_continuations`, instruct it that this is the final allowed continuation and it must finish remaining discovery and return `**Status:** COMPLETE`.
+   Required report format: a `**Report:** Planning` first line, a `**Status:** COMPLETE` or `**Status:** PARTIAL` second line, and a `**Log:**` line (one sentence, at most ~150 characters), followed by the exact sections for its status:
+   - If `**Status:** COMPLETE`: `### Plan` (with `#### Target Files`, `#### Architectural Constraints & Guidelines`, `#### Implementation Steps`, `#### Acceptance Criteria`) and optionally `### Research Notes`. No `### Discovery Progress` or `### Remaining Discovery`.
+   - If `**Status:** PARTIAL`: `### Discovery Progress` and `### Remaining Discovery`. No `### Plan` or `### Research Notes`.
+   No other headings.
+2. **Record & Route on `**Status:**`:**
+   * **If `**Status:** PARTIAL`:**
+       - **If `continuation_count + 1 > max_continuations`:** Set `continuation_count` to that value, `status: FAILED`, and `active_agent: none` in one frontmatter edit, log `- {time} [router] Continuation limit reached in planning; task marked FAILED and pipeline halted.`, halt the pipeline, and alert the user with `### Discovery Progress` and `### Remaining Discovery`.
+       - **Otherwise:**
+           - Log: `- {time} [planning] <Log line from the report>`
+           - Write or replace `## Planning Progress` in `{{tasks-dir}}/discovery/<id>-research.md` with `### Discovery Progress` and `### Remaining Discovery` (using {{file-edit-tools}}).
+           - Increment `continuation_count` in frontmatter (keep `active_agent: planning`).
+           - Re-spawn Phase 1 as a `PARTIAL` continuation spawn.
+   * **If `**Status:** COMPLETE`:**
+       - Log: `- {time} [planning] <Log line from the report>`
+       - Write the report's `### Plan` content to the `## Plan` section of the task file (replacing any previous plan).
+       - If `{{tasks-dir}}/discovery/<id>-research.md` exists and contains `## Planning Progress`, remove that section. If the report includes `### Research Notes`, write them to `{{tasks-dir}}/discovery/<id>-research.md` (append if the file exists).
+       - Log `- {time} transitioned from planning to implementation`, reset `continuation_count: 0`, set `active_agent: implementation`, and increment `attempt` in the same frontmatter edit, and proceed to Phase 2.
 
 ---
 
 ### Phase 2: Implementation
-1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`. Pass the task file path and the attempt number (the frontmatter `attempt`). On a retry, point it to the latest `FAIL` attempt under `## Verification Feedback`; after a human rejection, point it to the `# Human Rejection & Feedback` section.
-   Required report format: a `**Report:** Implementation` first line, then a `**Log:**` line (one sentence, at most ~150 characters), then `### Changes`, `### Checks Run`, and optionally `### Notes`. No other headings.
-2. **Record Implementation Report:**
-    - Log: `- {time} [implementation] <Log line from the report>`
-    - Write the report's `### Changes`, `### Checks Run`, and `### Notes` (if present) under `## Implementation Details` → `### Attempt N`.
-3. **Route:** Log `- {time} transitioned from implementation to verification`, set `active_agent: verification`, and proceed to Phase 3.
+1. **Delegate via {{spawn-agent}}:** Spawn the implementation sub-agent `task-dispatcher-implementation`. Pass the task file path and the attempt number (the frontmatter `attempt`).
+   - **Step batching:** Inspect `## Plan` (`#### Implementation Steps` and `#### Target Files`):
+     - On a retry after `FAIL` (when `continuation_count == 0`) or when `## Plan` has `<= 5` `#### Implementation Steps` and `<= 5` `#### Target Files` (and you are not continuing a `PARTIAL` attempt and `# Human Request` does not ask for chunked execution), spawn normally without restricting steps.
+     - Otherwise, assign an explicit, bounded batch of remaining `#### Implementation Steps` (e.g., 2–4 related steps) in the spawn prompt: instruct the agent to execute only that batch, then stop and return `**Status:** PARTIAL` if steps still remain, or `**Status:** COMPLETE` once all steps in `## Plan` are complete.
+   - **Context pointers:** On a `PARTIAL` continuation (`continuation_count > 0`), point it to `## Implementation Details` → `### Attempt N` (`### Changes`, `### Remaining Work`, `### Handoff Context`) and instruct it to report cumulative `### Changes` for this attempt. If `continuation_count == max_continuations`, instruct it that this is the final allowed continuation and it must complete all remaining steps and return `**Status:** COMPLETE`. On a retry, point it to the latest `FAIL` attempt under `## Verification Feedback`; after a human rejection, point it to `# Human Rejection & Feedback`.
+   Required report format: a `**Report:** Implementation` first line, a `**Status:** COMPLETE` or `**Status:** PARTIAL` second line, and a `**Log:**` line (one sentence, at most ~150 characters), followed by the exact sections for its status:
+   - If `**Status:** COMPLETE`: `### Changes`, `### Checks Run`, and optionally `### Notes`. No `### Remaining Work` or `### Handoff Context`.
+   - If `**Status:** PARTIAL`: `### Changes`, `### Checks Run`, `### Remaining Work`, `### Handoff Context`, and optionally `### Notes`.
+   No other headings.
+2. **Record & Route on `**Status:**`:**
+   * **If `**Status:** PARTIAL`:**
+       - **If `continuation_count + 1 > max_continuations`:** Set `continuation_count` to that value, `status: FAILED`, and `active_agent: none` in one frontmatter edit, log `- {time} [router] Continuation limit reached in implementation; task marked FAILED and pipeline halted.`, halt the pipeline, and alert the user with `### Remaining Work` and `### Handoff Context`.
+       - **Otherwise:**
+           - Log: `- {time} [implementation] <Log line from the report>`
+           - Write `**Status:** PARTIAL`, `### Changes`, `### Checks Run`, `### Remaining Work`, `### Handoff Context`, and `### Notes` (if present) under `## Implementation Details` → `### Attempt N` (replacing any prior `PARTIAL` block for `### Attempt N`, without incrementing `attempt`).
+           - Increment `continuation_count` in frontmatter (keep `active_agent: implementation`).
+           - Re-spawn Phase 2 for the same `attempt` as a `PARTIAL` continuation spawn.
+   * **If `**Status:** COMPLETE`:**
+       - Log: `- {time} [implementation] <Log line from the report>`
+       - Write `**Status:** COMPLETE`, `### Changes`, `### Checks Run`, and `### Notes` (if present) under `## Implementation Details` → `### Attempt N` (replacing any prior `PARTIAL` block for `### Attempt N`, and dropping `### Remaining Work` and `### Handoff Context`).
+       - Log `- {time} transitioned from implementation to verification`, reset `continuation_count: 0`, and set `active_agent: verification` in the same frontmatter edit, and proceed to Phase 3.
 
 ---
 
@@ -265,4 +302,4 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
     - **If `retry_count + 1` > `max_retries`:** Set `retry_count` to that value, `status: FAILED` and `active_agent: none` in one frontmatter edit, log `- {time} [router] Retry limit reached; task marked FAILED and pipeline halted.`, halt the pipeline, and alert the user with the failure details.
     - **Otherwise:**
       - Log `- {time} transitioned from verification to implementation`.
-      - In one frontmatter edit, increment `retry_count`, increment `attempt`, and set `active_agent: implementation`. Then return to Phase 2.
+      - In one frontmatter edit, increment `retry_count`, increment `attempt`, reset `continuation_count: 0`, and set `active_agent: implementation`. Then return to Phase 2.

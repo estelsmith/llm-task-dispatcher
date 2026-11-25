@@ -294,14 +294,32 @@ Use {{spawn-agent}} to delegate work to autonomous sub-agents as the orchestrati
 
 ### Phase 3: Verification
 1. **Delegate via {{spawn-agent}}:** Spawn the verification sub-agent `task-dispatcher-verification`. Pass the task file path and the attempt number (the frontmatter `attempt`).
-   Required report format: a `**Report:** Verification` first line, then a `**Verdict:** PASS` or `**Verdict:** FAIL` line, a `**Log:**` line (one sentence, at most ~150 characters), then `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and optionally `### Notes`. No other headings or fields; anything else goes under `### Notes`.
+   Required report format: a `**Report:** Verification` first line, then a `**Verdict:** PASS` or `**Verdict:** FAIL` line, a `**Log:**` line (one sentence, at most ~150 characters), then `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and optionally `### Notes`. No other headings or fields; anything else goes under `### Notes`:
+   ```markdown
+   **Report:** Verification
+   **Verdict:** PASS | FAIL
+   **Log:** <one sentence, at most ~150 characters, summarizing what you did and the outcome, for the execution log>
+
+   ### Acceptance Criteria
+   - [x] <criterion that is met>
+   - [ ] <criterion that is not met> — <why>
+
+   ### Checks Run
+   - `<command>` — <result, exit code>
+
+   ### Failure Details
+   <only for FAIL: relevant error output and a concise description of what must be fixed; omit this section on PASS>
+
+   ### Notes
+   <optional: caveats, things you could not verify, or other observations; omit this section if there are none>
+   ```
 2. **Record Verification Report:**
     - Log: `- {time} [verification] <Log line from the report>`
     - Write the report's `**Verdict:**` line, `### Acceptance Criteria`, `### Checks Run`, `### Failure Details` (FAIL only), and `### Notes` (if present) under `## Verification Feedback` → `### Attempt N`.
 3. **Route on the report's `**Verdict:**`.** Treat any verdict other than an explicit `PASS` as `FAIL`. Also treat a `PASS` as `FAIL` if any criterion in the report's `### Acceptance Criteria` is unchecked (`- [ ]`), or if any criterion under `## Plan` is missing from it.
 
 * **If `PASS`:**
-    - Tick each acceptance criterion under `## Plan` (`- [x]`) individually, only where the report marks the matching criterion `[x]`. Never tick criteria in bulk.
+    - Tick each acceptance criterion under `## Plan` (`- [x]`) only where the report marks the matching criterion `[x]`. You may update them in a single `## Plan`-scoped edit, but never use global search-and-replace across the file (which could overwrite historical `[ ]` items under `## Verification Feedback`).
     - Set `status: COMPLETED` and `active_agent: none` in frontmatter.
     - Log `- {time} [router] Verification passed; task completed and moved to completed/.`
     - Move the file from `{{tasks-dir}}/in-progress/<target-file>` to `{{tasks-dir}}/completed/<target-file>`.

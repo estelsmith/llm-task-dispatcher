@@ -78,9 +78,9 @@ disable-model-invocation: true'
 
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: Read, Write, Edit, Bash'
-    planning-frontmatter       "$(claude_agent_frontmatter PLANNING claude-sonnet-5-5 medium)"
-    implementation-frontmatter "$(claude_agent_frontmatter IMPLEMENTATION claude-haiku-5-5 high)"
-    verification-frontmatter   "$(claude_agent_frontmatter VERIFICATION claude-haiku-5-5 high)"
+    planning-frontmatter       "$(claude_agent_frontmatter PLANNING claude-sonnet-5-5 high)"
+    implementation-frontmatter "$(claude_agent_frontmatter IMPLEMENTATION claude-sonnet-5-5 low)"
+    verification-frontmatter   "$(claude_agent_frontmatter VERIFICATION claude-sonnet-5-5 low)"
 
     # Tool agents use to run shell commands.
     shell-tool 'the `Bash` tool'

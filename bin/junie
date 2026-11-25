@@ -62,9 +62,9 @@ PLACEHOLDERS=(
 
     # Agent front matter: tool allow-list, and model settings per agent.
     agent-tools 'tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]'
-    planning-frontmatter "$(junie_agent_frontmatter PLANNING sonnet medium)"
-    implementation-frontmatter "$(junie_agent_frontmatter IMPLEMENTATION haiku high)"
-    verification-frontmatter "$(junie_agent_frontmatter VERIFICATION haiku high)"
+    planning-frontmatter "$(junie_agent_frontmatter PLANNING sonnet high)"
+    implementation-frontmatter "$(junie_agent_frontmatter IMPLEMENTATION sonnet low)"
+    verification-frontmatter "$(junie_agent_frontmatter VERIFICATION sonnet low)"
 
     # Tool agents use to run shell commands.
     shell-tool '`Bash`'

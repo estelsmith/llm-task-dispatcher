@@ -6,8 +6,8 @@ You write a short task description in Markdown and run `/task-dispatcher`. The d
 three specialized sub-agents (planning, implementation and verification) and retries when verification fails. Each task's
 progress is kept in a file in your project.
 
-The cost is kept low by giving each phase only the model it needs: a stronger model plans, and a cheaper model writes and
-checks the code.
+The cost is kept low by giving each phase only the reasoning effort it needs: planning uses high reasoning effort, while
+implementation and verification run at low effort.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ For Claude Code, run `bin/claude install` instead (or as well).
            ▼                          ▼                          ▼
  ┌───────────────────┐ plan ┌───────────────────┐ code ┌───────────────────┐
  │     Planning      │ ───▶ │  Implementation   │ ───▶ │   Verification    │
- │ sonnet-5.5 medium │      │  haiku-5.5 high   │      │  haiku-5.5 high   │
+ │  sonnet-5.5 high  │      │  sonnet-5.5 low   │      │  sonnet-5.5 low   │
  └───────────────────┘      └───────────────────┘      └───────────────────┘
                                       ▲                     │         │
                                       │       FAIL          │         │ PASS
@@ -115,14 +115,14 @@ Re-run `install` after updating this repository or changing your settings.
 
 The defaults are:
 
-| Agent          | Junie              | Claude Code                  |
-|----------------|--------------------|------------------------------|
-| Planning       | `sonnet`, medium   | `claude-sonnet-5-5`, medium  |
-| Implementation | `haiku`, high      | `claude-haiku-5-5`, high     |
-| Verification   | `haiku`, high      | `claude-haiku-5-5`, high     |
+| Agent          | Junie            | Claude Code                |
+|----------------|------------------|----------------------------|
+| Planning       | `sonnet`, high   | `claude-sonnet-5-5`, high  |
+| Implementation | `sonnet`, low    | `claude-sonnet-5-5`, low   |
+| Verification   | `sonnet`, low    | `claude-sonnet-5-5`, low   |
 
-The dispatcher itself has no model setting and uses your session's model. It's preferable to choose Haiku 5.5 on medium
-effort when dispatching tasks.
+The dispatcher itself has no model setting and uses your session's model. It's preferable to choose Sonnet 5.5 on low
+effort, or Gemini 4 Hydrogen on low effort, when dispatching tasks.
 
 To use other models, such as custom model profiles behind an AI gateway, copy [`.env.example`](.env.example) to `.env`,
 uncomment the settings you want, and run `install` again. Set `JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or

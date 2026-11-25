@@ -84,28 +84,52 @@ tasks/
 ```
 
 By default, the tasks directory is `.junie/tasks/` for Junie and `.claude/tasks/` for Claude Code. To store tasks in
-another project-relative directory for both tools (for example, a shared `agent-tasks/` folder), set
-`TASK_DISPATCHER_TASKS_DIR` in `.env` (see [`.env.example`](.env.example)) or your shell environment and re-run
-`install`.
+another project-relative directory for both tools (for example, a shared `agent-tasks/` folder), either add
+`.task-dispatcher.json` to that project's root (no reinstall needed) or set `TASK_DISPATCHER_TASKS_DIR` globally in
+`.env` (see [`.env.example`](.env.example)) or your shell environment and re-run `install`.
 
 To resume an interrupted task, re-run `/task-dispatcher` on the same task file (now in `in-progress/`); the dispatcher
 picks up from the recorded `active_agent`, `attempt`, and any saved `PARTIAL` checkpoint instead of restarting from
 scratch.
 
 You can override `max_retries` (default `3`) and `max_continuations` (default `5`), or pass extra guidance such as
-requesting chunked execution, in three ways:
+requesting chunked execution, in four ways (highest precedence first):
 
 - **Per run in the command prompt:**
   - Junie: `/task-dispatcher task=my-task.md prompt="use a max continuation count of 10. This is a large change."`
   - Claude Code: `/task-dispatcher my-task.md use a max continuation count of 10. This is a large change.`
 - **Per task in the file:** set `max_retries` / `max_continuations` in the task's frontmatter, or ask for chunked
   execution in `# Human Request`.
+- **Per project in `.task-dispatcher.json`:** place a `.task-dispatcher.json` file in the project root (see below).
 - **Globally for both Junie and Claude Code:** set `TASK_DISPATCHER_MAX_RETRIES` and `TASK_DISPATCHER_MAX_CONTINUATIONS`
   in `.env` (see [`.env.example`](.env.example)) or your shell environment and re-run `install`.
 
 To reject a completed task, run the command with a reason, for example
 `/task-dispatcher Reject my-task.md: the new endpoint is missing input validation`. The dispatcher sends it back to
 planning or implementation, depending on the reason.
+
+### Per-project configuration (`.task-dispatcher.json`)
+
+To override pipeline defaults for a single repository across both Junie and Claude Code without re-running `install`,
+create a `.task-dispatcher.json` file in the project root. Every field is optional; any omitted key falls back to the
+global install-time default.
+
+Example with all supported override options:
+
+```json
+{
+  "tasks_dir": "agent-tasks",
+  "max_retries": 3,
+  "max_continuations": 5
+}
+```
+
+- `tasks_dir`: project-relative folder for `pending/`, `in-progress/`, `completed/`, and `discovery/`.
+- `max_retries`: default retry limit (non-negative integer) for verification failures.
+- `max_continuations`: default `PARTIAL` continuation limit (non-negative integer) per phase or attempt.
+
+Agent model and reasoning/effort settings live in static sub-agent frontmatter, so those remain configured globally at
+install time via `.env` or environment variables.
 
 ## Installer commands
 

@@ -13,14 +13,14 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, t
 ## Mandate & Workflow
 
 1. **Review Task, Plan & Diffs:**
-   - Read the task file path given to you by the task dispatcher, and note the attempt number it gives you.
+   - Read the task file path given to you by the task dispatcher, and note the resolved `tasks_dir` and the attempt number it gives you.
    - Read the Acceptance Criteria checklist under `## Plan`, the `base_commit` frontmatter field, and the `## Baseline` section.
    - Read the latest attempt under `## Implementation Details`, but treat it as unverified claims: never mark a criterion as met or a check as passing based on that report alone.
    - Inspect the changes via {{shell-tool}}:
      - `git status --porcelain --untracked-files=all` lists every modified, added, deleted, and untracked file.
      - `git diff <base_commit>` shows changes to tracked files since the pipeline started (use `git diff HEAD` if `base_commit` is `none` but the project is a git repository).
      - `git diff` does not show untracked files, so read every new or untracked file directly. If the project is not a git repository, read the plan's target files directly.
-   - Paths already listed in `## Baseline` were modified or untracked before the task started; only attribute changes in them to this task if the plan targets them. Ignore everything under `{{tasks-dir}}/`.
+   - Paths already listed in `## Baseline` were modified or untracked before the task started; only attribute changes in them to this task if the plan targets them. Ignore everything under the `tasks_dir` provided by the task dispatcher (the parent of `in-progress/`).
 
 2. **Execute Verification:**
    - Run relevant test suites, linters, or verification commands using the project's standard test and validation commands.
@@ -62,6 +62,6 @@ Do not add any other headings, fields, or free-form lines outside this structure
 
 ## Rules & Constraints
 - Read-only on application code; do not modify source files or tests.
-- Never execute destructive git or filesystem commands (`git reset`, `git checkout`, `rm -rf`, etc.).
-- Do not change git state: no `git commit`, `git add`, `git stash`, or branch switching.
-- Do not modify anything under `{{tasks-dir}}/`: do not write execution log entries, change frontmatter, update retry counts, or move task files. The task dispatcher records your report and routes the task.
+- Do not execute destructive git or filesystem commands (`git reset`, `git checkout`, `rm -rf`, etc.) unless explicitly instructed to do so.
+- Do not change git state (no `git commit`, `git add`, `git stash`, or branch switching) unless explicitly instructed to do so.
+- Do not modify anything under the `tasks_dir` provided by the task dispatcher (the parent of `in-progress/`): do not write execution log entries, change frontmatter, update retry counts, or move task files. The task dispatcher records your report and routes the task.

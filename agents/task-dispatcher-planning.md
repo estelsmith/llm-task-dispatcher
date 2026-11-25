@@ -13,9 +13,9 @@ The task dispatcher owns the pipeline: it records logs, updates the task file, a
 ## Mandate & Workflow
 
 1. **Read Active Task & Feedback:**
-   - Read the task file path given to you by the task dispatcher.
+   - Read the task file path and the resolved `tasks_dir` given to you by the task dispatcher.
    - Carefully review the `# Human Request`, any existing `## Plan`, and any `# Human Rejection & Feedback` sections.
-   - If the task dispatcher points you to `{{tasks-dir}}/discovery/<id>-research.md` (`## Planning Progress`) for a `PARTIAL` continuation, read `### Discovery Progress` and `### Remaining Discovery` first so you pick up from where the previous pass stopped without repeating explored areas.
+   - If the task dispatcher points you to a discovery research file (e.g., `<tasks_dir>/discovery/<id>-research.md` → `## Planning Progress`) for a `PARTIAL` continuation, read `### Discovery Progress` and `### Remaining Discovery` first so you pick up from where the previous pass stopped without repeating explored areas.
 
 2. **Repository Discovery & Analysis:**
    - Search the codebase, inspect dependencies, check configuration files, and trace data flow.
@@ -80,6 +80,6 @@ Your final response must match exactly one of these two structures:
 Never include `### Plan` or `### Research Notes` in a `PARTIAL` report, and never include `### Discovery Progress` or `### Remaining Discovery` in a `COMPLETE` report. Do not add any other headings or fields.
 
 ## Rules & Constraints
-- Read-only: do not modify application source files or anything under `{{tasks-dir}}/`. The task dispatcher writes your plan and research notes into the task files.
+- Read-only: do not modify application source files or anything under the `tasks_dir` provided by the task dispatcher (the parent of `in-progress/`). The task dispatcher writes your plan and research notes into the task files.
 - Do not write execution log entries, change frontmatter, or move task files.
 - State concrete file paths and symbols; avoid vague directives.

@@ -67,7 +67,7 @@ The sub-agents never touch the task files; they only send a report back to the d
 
 ## Using it
 
-1. Write a task as a Markdown file in your project's pending folder:
+1. Write a task as a Markdown file in your project's pending folder (by default):
    - Junie: `.junie/tasks/pending/my-task.md`
    - Claude Code: `.claude/tasks/pending/my-task.md`
 2. Run the command in a session for that project:
@@ -82,6 +82,11 @@ tasks/
 ├── completed/    # Tasks that passed verification
 └── discovery/    # Research notes and in-progress planning checkpoints
 ```
+
+By default, the tasks directory is `.junie/tasks/` for Junie and `.claude/tasks/` for Claude Code. To store tasks in
+another project-relative directory for both tools (for example, a shared `agent-tasks/` folder), set
+`TASK_DISPATCHER_TASKS_DIR` in `.env` (see [`.env.example`](.env.example)) or your shell environment and re-run
+`install`.
 
 To resume an interrupted task, re-run `/task-dispatcher` on the same task file (now in `in-progress/`); the dispatcher
 picks up from the recorded `active_agent`, `attempt`, and any saved `PARTIAL` checkpoint instead of restarting from
@@ -134,12 +139,12 @@ The defaults are:
 The dispatcher itself has no model setting and uses your session's model. It's preferable to choose Sonnet 5.5 on low
 effort, or Gemini 4 Hydrogen on low effort, when dispatching tasks.
 
-To use other models, such as custom model profiles behind an AI gateway, or to change the default `max_retries` and
-`max_continuations` limits (`TASK_DISPATCHER_MAX_RETRIES` / `TASK_DISPATCHER_MAX_CONTINUATIONS`), copy
-[`.env.example`](.env.example) to `.env`, uncomment the settings you want, and run `install` again. Set
-`JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or `CLAUDE_DEFAULT_MODEL` / `CLAUDE_DEFAULT_EFFORT` to apply a default
-model or reasoning effort to all agents without a per-agent override. `.env` is gitignored, and variables set in your
-shell take precedence over it.
+To use other models, such as custom model profiles behind an AI gateway, or to change the tasks directory
+(`TASK_DISPATCHER_TASKS_DIR`) or default `max_retries` and `max_continuations` limits (`TASK_DISPATCHER_MAX_RETRIES` /
+`TASK_DISPATCHER_MAX_CONTINUATIONS`), copy [`.env.example`](.env.example) to `.env`, uncomment the settings you want,
+and run `install` again. Set `JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or `CLAUDE_DEFAULT_MODEL` /
+`CLAUDE_DEFAULT_EFFORT` to apply a default model or reasoning effort to all agents without a per-agent override. `.env`
+is gitignored, and variables set in your shell take precedence over it.
 
 ```shell
 cp .env.example .env

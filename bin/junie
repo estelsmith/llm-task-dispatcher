@@ -47,6 +47,8 @@ junie_agent_frontmatter() {
         'allowPromptArgument: true'
 }
 
+read_tasks_dir _task_dispatcher_tasks_dir '.junie/tasks'
+
 # Junie-specific placeholder values, as alternating name/value pairs.
 # A value may span multiple lines and may be empty.
 PLACEHOLDERS=(
@@ -55,7 +57,7 @@ PLACEHOLDERS=(
     task-argument       '$task'
 
     # Directory (relative to the project root) holding the task pipeline folders.
-    tasks-dir           '.junie/tasks'
+    tasks-dir           "$_task_dispatcher_tasks_dir"
 
     # Tool used by the orchestrator to delegate work to a sub-agent.
     spawn-agent         '`spawn_subagent`'

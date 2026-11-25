@@ -17,9 +17,11 @@
 # .env.example), so scripts can use its settings when defining PLACEHOLDERS.
 # Variables already set in the environment take precedence over the .env file.
 #
-# Common settings shared across tools (applied via COMMON_PLACEHOLDERS):
-#   TASK_DISPATCHER_MAX_RETRIES        Default max_retries (default: 3)
-#   TASK_DISPATCHER_MAX_CONTINUATIONS  Default max_continuations (default: 5)
+# Common settings shared across tools:
+#   TASK_DISPATCHER_TASKS_DIR          Project-relative tasks directory override
+#                                      (falls back to each tool's default)
+#   TASK_DISPATCHER_MAX_RETRIES        Default max_retries (default: 3, via COMMON_PLACEHOLDERS)
+#   TASK_DISPATCHER_MAX_CONTINUATIONS  Default max_continuations (default: 5, via COMMON_PLACEHOLDERS)
 #
 # Repository files are vendor-neutral templates. Install-time placeholders use
 # the {{name}} syntax; single-brace {name} fields are left untouched because they
@@ -84,6 +86,21 @@ read_int_setting() {
     val="${!env_var:-$default_val}"
     if [[ ! "$val" =~ ^[0-9]+$ ]]; then
         echo "${RED}error:${RESET} $env_var must be a non-negative integer (got '$val')" >&2
+        exit 1
+    fi
+    printf -v "$out_var" '%s' "$val"
+}
+
+# Sets <out_var> to TASK_DISPATCHER_TASKS_DIR (with trailing slashes stripped)
+# or <default_val> if unset or empty.
+read_tasks_dir() {
+    local out_var="$1" default_val="$2" val
+    val="${TASK_DISPATCHER_TASKS_DIR:-$default_val}"
+    while [[ "$val" == */ ]]; do
+        val="${val%/}"
+    done
+    if [[ -z "${val//[[:space:]]/}" ]]; then
+        echo "${RED}error:${RESET} TASK_DISPATCHER_TASKS_DIR must not be '/' or whitespace" >&2
         exit 1
     fi
     printf -v "$out_var" '%s' "$val"

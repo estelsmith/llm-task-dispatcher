@@ -170,3 +170,8 @@ bin/junie install
 The files in [`commands/`](commands/) and [`agents/`](agents/) are tool-neutral templates. They contain `{{placeholder}}`
 values that each installer fills in with its tool's values (paths, tool names, front matter) when it copies them.
 Single-brace fields such as `{time}` are left as they are, because they're meant for the agents.
+
+## License
+MIT license. Go nuts, do whatever you want, just don't blame me if this breaks something.
+
+See [LICENSE](LICENSE) for details.

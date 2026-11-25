@@ -1,0 +1,5 @@
+{
+    "tasks_dir": "agent-tasks",
+    "max_retries": 6,
+    "max_continuations": 10
+}

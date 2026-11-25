@@ -111,11 +111,16 @@ planning or implementation, depending on the reason.
 
 [`bin/junie`](bin/junie) and [`bin/claude`](bin/claude) take the same sub-commands:
 
-| Command     | What it does                                                              |
-|-------------|---------------------------------------------------------------------------|
-| `install`   | Installs the command and agents, or updates them after you pull changes   |
-| `uninstall` | Removes only the files this repository installed                          |
-| `doctor`    | Checks that the installed files are present and match the repository      |
+| Command           | What it does                                                              |
+|-------------------|---------------------------------------------------------------------------|
+| `install`         | Installs the command and agents, or updates them after you pull changes   |
+| `uninstall`       | Removes only the files this repository installed                          |
+| `doctor [--diff]` | Checks that the installed files are present and match the repository      |
+
+Pass `--diff` to `doctor` (e.g. `bin/junie doctor --diff` or `bin/claude doctor --diff`) to print a unified diff for each
+existing file that differs from the rendered template. This lets you inspect what changed after pulling updates and
+verify that `.env` or environment overrides are being applied as expected before running `install`. Missing files are
+still reported without printing a diff.
 
 Where the files go:
 

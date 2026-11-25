@@ -3,9 +3,9 @@
 # Installs, uninstalls and verifies the task dispatcher command and agents
 # in the user's Junie home directory.
 #
-#   bin/junie install     Copy commands/ and agents/ into ~/.junie (install or update)
-#   bin/junie uninstall   Remove the files installed by this repository
-#   bin/junie doctor      Verify installed files are present and match the repository
+#   bin/junie install            Copy commands/ and agents/ into ~/.junie (install or update)
+#   bin/junie uninstall          Remove the files installed by this repository
+#   bin/junie doctor [--diff]    Verify installed files are present and match the repository
 #
 # The repository files are vendor-neutral templates containing {{placeholder}}
 # variables. They are rendered with the Junie-specific values defined in

@@ -112,13 +112,14 @@ init_home_dir() {
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") <command>
+Usage: $(basename "$0") <command> [options]
 
 Commands:
   install     Install or update the task dispatcher command and agents into
               ${TARGET_HOME_DIR}
   uninstall   Remove the installed command and agents from ${TARGET_HOME_DIR}
   doctor      Verify the installed files are in place and match the repository
+              Pass --diff to show unified diffs for files that differ
   help        Show this help
 
 Set ${HOME_ENV_VAR} to use a ${TOOL_NAME} home directory other than ${DEFAULT_HOME/#$HOME/~}.
@@ -236,7 +237,22 @@ cmd_uninstall() {
 }
 
 cmd_doctor() {
-    local rel dest rendered ok=0 problems=0
+    local show_diff=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --diff) show_diff=1 ;;
+            -h|--help) usage; return 0 ;;
+            *)
+                echo "${RED}error:${RESET} unknown option for doctor: '$1'" >&2
+                echo >&2
+                usage >&2
+                return 2
+                ;;
+        esac
+        shift
+    done
+
+    local rel dest rendered ok=0 problems=0 need_sep=0
     rendered="$(mktemp)"
     echo "${TOOL_NAME} home: $TARGET_HOME_DIR"
     echo "Repository: $REPO_ROOT"
@@ -248,6 +264,10 @@ cmd_doctor() {
     echo
     while IFS= read -r rel; do
         dest="$TARGET_HOME_DIR/$(install_path "$rel")"
+        if [[ $need_sep -eq 1 ]]; then
+            echo
+            need_sep=0
+        fi
         if ! render "$rel" > "$rendered"; then
             echo "${RED}invalid${RESET}    $REPO_ROOT/$rel"
             problems=$((problems + 1))
@@ -256,6 +276,10 @@ cmd_doctor() {
             problems=$((problems + 1))
         elif ! cmp -s "$rendered" "$dest"; then
             echo "${RED}differs${RESET}    $dest"
+            if [[ $show_diff -eq 1 ]]; then
+                diff -u -L "$dest (installed)" -L "$rel (updated)" "$dest" "$rendered" || true
+                need_sep=1
+            fi
             problems=$((problems + 1))
         else
             echo "${GREEN}ok${RESET}         $dest"
@@ -274,10 +298,11 @@ cmd_doctor() {
 main() {
     init_home_dir
     local command="${1:-help}"
+    shift || true
     case "$command" in
         install)   cmd_install ;;
         uninstall) cmd_uninstall ;;
-        doctor)    cmd_doctor ;;
+        doctor)    cmd_doctor "$@" ;;
         help|-h|--help) usage ;;
         *)
             echo "${RED}error:${RESET} unknown command '$command'" >&2

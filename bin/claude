@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
 #
-# Installs, uninstalls and verifies the task dispatcher command and agents
-# in the user's Claude Code configuration directory.
+# Installs, uninstalls, and checks the task dispatcher templates in ~/.claude
+# (or $CLAUDE_CONFIG_DIR).
 #
-#   bin/claude install           Install commands/ as skills and agents/ as subagents into ~/.claude
-#   bin/claude uninstall         Remove the files installed by this repository
-#   bin/claude doctor [--diff]   Verify installed files are present and match the repository
+#   bin/claude install           Render and copy commands + agents
+#   bin/claude uninstall         Remove only the files this repo installed
+#   bin/claude doctor [--diff]   Check installed files against the rendered templates
 #
-# The repository files are vendor-neutral templates containing {{placeholder}}
-# variables. They are rendered with the Claude Code-specific values defined in
-# PLACEHOLDERS below as they are copied into the Claude Code configuration directory.
+# Templates use {{placeholder}} tags so commands/ and agents/ stay tool-neutral.
+# Claude Desktop and current Claude Code discover slash commands as skills, so
+# commands/*.md get written to skills/<name>/SKILL.md while agents stay in agents/.
 #
-# Commands are installed as skills (skills/<name>/SKILL.md), which is where the
-# Claude Desktop app and current Claude Code versions discover slash commands.
-# Agents are installed as-is into agents/.
-#
-# The configuration directory defaults to ~/.claude and can be overridden with
-# CLAUDE_CONFIG_DIR, the same variable Claude Code itself uses.
-#
-# Each agent's model and effort level can be overridden with CLAUDE_*_MODEL and
-# CLAUDE_*_EFFORT, either in the environment or in the repository's .env file
-# (see .env.example). An agent without CLAUDE_*_MODEL or CLAUDE_*_EFFORT falls
-# back to CLAUDE_DEFAULT_MODEL or CLAUDE_DEFAULT_EFFORT before the script's
-# built-in default. Setting one to an empty value omits it from the front matter.
+# Override per-agent models and effort with CLAUDE_*_MODEL / CLAUDE_*_EFFORT
+# (or CLAUDE_DEFAULT_MODEL / CLAUDE_DEFAULT_EFFORT) in .env or your shell.
+# Setting one to empty drops that field from front matter completely.
 
 set -euo pipefail
 
@@ -38,8 +29,8 @@ TOOL_NAME="Claude Code"
 HOME_ENV_VAR="CLAUDE_CONFIG_DIR"
 DEFAULT_HOME="$HOME/.claude"
 
-# Prints an agent's model front matter. Arguments: the agent's variable prefix
-# (e.g. PLANNING), its default model and its default effort level.
+# Builds an agent's front matter from $1 (like PLANNING), falling back through
+# CLAUDE_DEFAULT_* to the script's built-in defaults ($2, $3).
 claude_agent_frontmatter() {
     local model_var="CLAUDE_$1_MODEL" effort_var="CLAUDE_$1_EFFORT" default_model default_effort model effort
     default_model="${CLAUDE_DEFAULT_MODEL-$2}"
@@ -49,7 +40,7 @@ claude_agent_frontmatter() {
     join_lines "${model:+model: $model}" "${effort:+effort: $effort}"
 }
 
-# Installs commands/<name>.md as skills/<name>/SKILL.md; everything else keeps its path.
+# Rewrite commands/<name>.md to skills/<name>/SKILL.md since that's where Claude Code looks for slash commands.
 install_path() {
     local rel="$1" name
     if [[ "$rel" == commands/*.md ]]; then
@@ -62,8 +53,7 @@ install_path() {
 
 read_tasks_dir _task_dispatcher_tasks_dir '.claude/tasks'
 
-# Claude Code-specific placeholder values, as alternating name/value pairs.
-# A value may span multiple lines and may be empty.
+# Alternating placeholder name/value pairs (empty values are fine).
 PLACEHOLDERS=(
     # Command (skill) front matter and the variable holding the command's argument.
     # disable-model-invocation keeps Claude from starting the pipeline on its own.
@@ -72,10 +62,10 @@ argument-hint: "[task-file] [instructions]"
 disable-model-invocation: true'
     task-argument       '$ARGUMENTS'
 
-    # Directory (relative to the project root) holding the task pipeline folders.
+    # Project-relative folder for the task pipeline directories.
     tasks-dir           "$_task_dispatcher_tasks_dir"
 
-    # Tool used by the orchestrator to delegate work to a sub-agent.
+    # Tool the dispatcher uses to spawn a sub-agent.
     spawn-agent         'the `Agent` tool'
 
     # Agent front matter: tool allow-list, and model settings per agent.

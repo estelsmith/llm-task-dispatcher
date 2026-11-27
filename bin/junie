@@ -1,23 +1,16 @@
 #!/usr/bin/env bash
 #
-# Installs, uninstalls and verifies the task dispatcher command and agents
-# in the user's Junie home directory.
+# Installs, uninstalls, and checks the task dispatcher templates in ~/.junie
+# (or $JUNIE_HOME).
 #
-#   bin/junie install            Copy commands/ and agents/ into ~/.junie (install or update)
-#   bin/junie uninstall          Remove the files installed by this repository
-#   bin/junie doctor [--diff]    Verify installed files are present and match the repository
+#   bin/junie install            Render and copy commands + agents
+#   bin/junie uninstall          Remove only the files this repo installed
+#   bin/junie doctor [--diff]    Check installed files against the rendered templates
 #
-# The repository files are vendor-neutral templates containing {{placeholder}}
-# variables. They are rendered with the Junie-specific values defined in
-# PLACEHOLDERS below as they are copied into the Junie home directory.
-#
-# The Junie home directory defaults to ~/.junie and can be overridden with JUNIE_HOME.
-#
-# Each agent's model and reasoning level can be overridden with JUNIE_*_MODEL and
-# JUNIE_*_REASONING, either in the environment or in the repository's .env file
-# (see .env.example). An agent without JUNIE_*_MODEL or JUNIE_*_REASONING falls
-# back to JUNIE_DEFAULT_MODEL or JUNIE_DEFAULT_REASONING before the script's
-# built-in default. Setting one to an empty value omits it from the front matter.
+# Templates use {{placeholder}} tags so commands/ and agents/ stay tool-neutral.
+# Override per-agent models and reasoning with JUNIE_*_MODEL / JUNIE_*_REASONING
+# (or JUNIE_DEFAULT_MODEL / JUNIE_DEFAULT_REASONING) in .env or your shell.
+# Setting one to empty drops that field from front matter completely.
 
 set -euo pipefail
 
@@ -33,8 +26,8 @@ TOOL_NAME="Junie"
 HOME_ENV_VAR="JUNIE_HOME"
 DEFAULT_HOME="$HOME/.junie"
 
-# Prints an agent's model front matter. Arguments: the agent's variable prefix
-# (e.g. PLANNING), its default model and its default reasoning level.
+# Builds an agent's front matter from $1 (like PLANNING), falling back through
+# JUNIE_DEFAULT_* to the script's built-in defaults ($2, $3).
 junie_agent_frontmatter() {
     local model_var="JUNIE_$1_MODEL" reasoning_var="JUNIE_$1_REASONING" default_model default_reasoning model reasoning
     default_model="${JUNIE_DEFAULT_MODEL-$2}"
@@ -49,17 +42,16 @@ junie_agent_frontmatter() {
 
 read_tasks_dir _task_dispatcher_tasks_dir '.junie/tasks'
 
-# Junie-specific placeholder values, as alternating name/value pairs.
-# A value may span multiple lines and may be empty.
+# Alternating placeholder name/value pairs (empty values are fine).
 PLACEHOLDERS=(
     # Command front matter and the variable holding the command's argument.
     command-frontmatter 'allowPromptArgument: true'
     task-argument       '$task'
 
-    # Directory (relative to the project root) holding the task pipeline folders.
+    # Project-relative folder for the task pipeline directories.
     tasks-dir           "$_task_dispatcher_tasks_dir"
 
-    # Tool used by the orchestrator to delegate work to a sub-agent.
+    # Tool the dispatcher uses to spawn a sub-agent.
     spawn-agent         '`spawn_subagent`'
 
     # Agent front matter: tool allow-list, and model settings per agent.

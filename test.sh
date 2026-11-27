@@ -3,10 +3,10 @@ set -euo pipefail
 
 # End-to-end test harness for the Junie task-dispatcher pipeline.
 #
-# Runs the dispatcher inside an isolated detached git worktree with an isolated
-# temporary JUNIE_HOME, runs deterministic Tier A (task archive & deliverables)
-# and Tier B (Junie session transcript/summary) assertions, optionally runs a
-# Tier C LLM-as-a-judge pass (--deep), and tears down the worktree on exit.
+# Spins up a detached git worktree and a fresh temporary JUNIE_HOME so runs don't
+# touch your real config or repo state. After Junie finishes, it checks Tier A
+# (task archive & deliverables) and Tier B (session transcript/summary), with an
+# optional Tier C LLM-as-a-judge pass (--deep), then tears down the worktree.
 
 REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -40,27 +40,27 @@ usage() {
     cat <<EOF
 Usage: ./test.sh [options]
 
-Automated end-to-end test runner for the task-dispatcher pipeline.
+End-to-end test runner for the task-dispatcher pipeline.
 
 Options:
-  --junie <impl>      Junie executable to run: "safehouse", "local", or a path/command.
-                      Defaults to \$JUNIE_BIN if set, else ~/bin/junie-safehouse if
+  --junie <impl>      Junie binary to run: "safehouse", "local", or a path/command.
+                      Uses \$JUNIE_BIN if set, else ~/bin/junie-safehouse if
                       executable, else ~/.local/bin/junie.
   --task <path>       Task fixture markdown file (default: $DEFAULT_TASK).
-  --model <id>        Optional --model override passed to Junie for the dispatcher.
-  --max-steps <n>     Max steps for the Junie invocation (default: $DEFAULT_MAX_STEPS).
-  --expect-retry      Require Attempt 1 FAIL -> Attempt 2 PASS retry loop (auto-enabled
-                      for test-task*.md fixtures).
-  --no-expect-retry   Do not require the 2-attempt retry loop (for custom fixtures).
-  --deep              Run optional Tier C LLM-as-a-judge semantic audit after Tier A/B.
-  --keep              Preserve temporary JUNIE_HOME and copied artifacts after pass.
-  --dry-run           Prepare worktree, isolated JUNIE_HOME, install & doctor checks,
-                      and print the Junie command without invoking the LLM.
-  -h, --help          Show this help message.
+  --model <id>        Model override passed to Junie for the dispatcher.
+  --max-steps <n>     Max steps for the Junie run (default: $DEFAULT_MAX_STEPS).
+  --expect-retry      Require Attempt 1 FAIL -> Attempt 2 PASS retry loop (on by
+                      default for test-task*.md fixtures).
+  --no-expect-retry   Skip the 2-attempt retry requirement (for custom fixtures).
+  --deep              Run Tier C LLM-as-a-judge semantic audit after Tier A/B.
+  --keep              Keep temporary JUNIE_HOME and copied artifacts after pass.
+  --dry-run           Set up the worktree + JUNIE_HOME, run install/doctor, and
+                      print the Junie command without calling the LLM.
+  -h, --help          Show this help.
 
 Environment variables:
-  JUNIE_BIN           Same as --junie (overridden by --junie).
-  JUNIE_TEST_MODEL    Same as --model (overridden by --model).
+  JUNIE_BIN           Same as --junie (--junie wins if both are set).
+  JUNIE_TEST_MODEL    Same as --model (--model wins if both are set).
 EOF
 }
 
@@ -229,7 +229,7 @@ fi
 TASK_FILENAME="$(basename "$TASK_SRC")"
 TASK_ID="${TASK_FILENAME%.md}"
 
-# Auto-select a LiteLLM custom model if --model / JUNIE_TEST_MODEL is unset and LITELLM_MASTER_KEY is present.
+# If no model was passed explicitly and LITELLM_MASTER_KEY is set, pick up a custom: profile from .env or Junie's settings.
 if [[ -z "$MODEL_ARG" ]]; then
     MODEL_ARG="$(python3 - "$REPO_ROOT" "$HOME/.junie/settings.json" "${JUNIE_DEFAULT_MODEL:-}" "${LITELLM_MASTER_KEY:-}" <<'PY'
 import json, pathlib, re, sys
@@ -289,7 +289,7 @@ if [[ "$EXPECT_RETRY" == "auto" ]]; then
     fi
 fi
 
-# Resolve tasks_dir using the same precedence as the dispatcher (.task-dispatcher.json -> env -> .junie/tasks).
+# Match the dispatcher's tasks_dir precedence (.task-dispatcher.json -> env -> .junie/tasks) so we seed and check the right folder.
 TASKS_DIR="$(python3 - "$REPO_ROOT" "${TASK_DISPATCHER_TASKS_DIR:-}" <<'PY'
 import json, pathlib, sys
 repo = pathlib.Path(sys.argv[1])
@@ -397,7 +397,7 @@ JUNIE_HOME="$TMP_JUNIE_HOME" "$REPO_ROOT/bin/junie" doctor
 mkdir -p "$WORKDIR/$TASKS_DIR/pending"
 cp "$TASK_SRC" "$WORKDIR/$TASKS_DIR/pending/$TASK_FILENAME"
 
-# Render the /task-dispatcher slash command template with YAML frontmatter stripped and $task substituted.
+# Strip YAML frontmatter and substitute $task so Junie gets the same prompt body /task-dispatcher sends.
 RENDERED_PROMPT_FILE="$RUN_DIR/prompt.txt"
 python3 - "$TMP_JUNIE_HOME/commands/task-dispatcher.md" "$TASK_FILENAME" "$RENDERED_PROMPT_FILE" <<'PY'
 import pathlib, re, sys
@@ -429,8 +429,8 @@ if [[ -n "$MODEL_ARG" ]]; then
     JUNIE_ARGS+=("--model=$MODEL_ARG")
 fi
 
-# Configure Safehouse overrides via environment (no policy file edits needed).
-# When using a non-safehouse binary (e.g. ~/.local/bin/junie), these are harmlessly ignored.
+# Pass extra writable/read-only paths via Safehouse env vars instead of editing policy files.
+# Plain non-safehouse binaries (like ~/.local/bin/junie) just ignore these.
 SAFEHOUSE_ADD_DIRS_VAL="${SAFEHOUSE_ADD_DIRS:+$SAFEHOUSE_ADD_DIRS:}$TMP_JUNIE_HOME:$RUN_DIR:$WORKTREE_GIT_DIR"
 SAFEHOUSE_ADD_DIRS_RO_VAL="${SAFEHOUSE_ADD_DIRS_RO:+$SAFEHOUSE_ADD_DIRS_RO:}$REPO_ROOT/.git"
 SAFEHOUSE_ENV_PASS_VAL="${SAFEHOUSE_ENV_PASS:+$SAFEHOUSE_ENV_PASS,}JUNIE_HOME"
@@ -681,7 +681,7 @@ if len(session_dirs) == 1:
 
     if transcript_path.is_file():
         t_text = transcript_path.read_text(encoding="utf-8")
-        # Check dispatcher did not use bash to edit task files under tasks_dir
+        # Make sure the dispatcher didn't shell out to bash to edit task files under tasks_dir.
         bad_bash = []
         for line in t_text.splitlines():
             if line.startswith("### Ran ") or line.startswith("### Failed to run "):
@@ -730,7 +730,7 @@ Reply ONLY with valid JSON (no markdown fences) matching:
 Set "pass" to false if ANY invariant failed.
 EOF
 )
-    # Run the judge using a separate temporary JUNIE_HOME so it doesn't pollute the tested session's JUNIE_HOME.
+    # Give the judge its own JUNIE_HOME so it doesn't clutter the tested session directory.
     JUDGE_JUNIE_HOME="$RUN_BASE/judge-junie-home"
     mkdir -p "$JUDGE_JUNIE_HOME"
     [[ -d "$TMP_JUNIE_HOME/models" ]] && cp -R "$TMP_JUNIE_HOME/models" "$JUDGE_JUNIE_HOME/models"
@@ -779,4 +779,4 @@ PY
     log_pass "Tier C semantic audit passed."
 fi
 
-log_pass "All pipeline tests passed!"
+log_pass "All pipeline tests passed."

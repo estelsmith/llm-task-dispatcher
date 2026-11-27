@@ -1,25 +1,22 @@
 # Task Dispatcher
 
-A multi-agent task pipeline for [Junie](https://junie.jetbrains.com/) and [Claude Code](https://code.claude.com/).
+A three-agent task pipeline for [Junie](https://junie.jetbrains.com/) and [Claude Code](https://code.claude.com/).
 
-You write a short task description in Markdown and run `/task-dispatcher`. The dispatcher then sends the task through
-three specialized sub-agents (planning, implementation and verification) and retries when verification fails. Each task's
-progress is kept in a file in your project.
-
-The cost is kept low by giving each phase only the reasoning effort it needs: planning uses high reasoning effort, while
-implementation and verification run at low effort.
+I built this so I can drop a short task description in a Markdown file, run `/task-dispatcher`, and hand the work off to separate planning, implementation, and verification sub-agents. Each phase only gets the reasoning effort it actually needs (high for planning, low for implementation and verification) so runs don't get spendy, and the task file itself holds every plan, retry, and checkpoint.
 
 ## Quick start
 
 ```shell
+# Clone the repo and install the command + sub-agents into ~/.junie
 git clone https://github.com/estelsmith/llm-task-dispatcher.git
 cd llm-task-dispatcher
 bin/junie install
+
+# Or install into ~/.claude for Claude Code (you can install both)
+bin/claude install
 ```
 
-That's it. Any new Junie session can now use the `/task-dispatcher` command.
-
-For Claude Code, run `bin/claude install` instead (or as well).
+Any new session can now run `/task-dispatcher`.
 
 ## How it works
 
@@ -27,43 +24,31 @@ For Claude Code, run `bin/claude install` instead (or as well).
                       you: /task-dispatcher <task-file>
                                       │
                                       ▼
- ┌─────────────────────────────────────────────────────────────────────────┐
- │                     Task Dispatcher (your session)                      │
- │   Writes logs, moves files, counts retries/continuations, routes work   │
- │              Uses your session's model and reasoning level              │
- └─────────────────────────────────────────────────────────────────────────┘
-           │ spawn                    │ spawn                    │ spawn
-           ▼                          ▼                          ▼
- ┌───────────────────┐ plan ┌───────────────────┐ code ┌───────────────────┐
- │     Planning      │ ───▶ │  Implementation   │ ───▶ │   Verification    │
- │  sonnet-5.5 high  │      │  sonnet-5.5 low   │      │  sonnet-5.5 low   │
- └───────────────────┘      └───────────────────┘      └───────────────────┘
-                                      ▲                     │         │
-                                      │       FAIL          │         │ PASS
-                                      └─────────────────────┘         ▼
-                                     (up to max_retries times)   completed/
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Task Dispatcher (your session)                      │
+│   Writes logs, moves files, counts retries/continuations, routes work   │
+│              Uses your session's model and reasoning level              │
+└─────────────────────────────────────────────────────────────────────────┘
+          │ spawn                    │ spawn                    │ spawn
+          ▼                          ▼                          ▼
+┌───────────────────┐ plan ┌───────────────────┐ code ┌───────────────────┐
+│     Planning      │ ───▶ │  Implementation   │ ───▶ │   Verification    │
+│  sonnet-5.5 high  │      │  sonnet-5.5 low   │      │  sonnet-5.5 low   │
+└───────────────────┘      └───────────────────┘      └───────────────────┘
+                                     ▲                     │         │
+                                     │       FAIL          │         │ PASS
+                                     └─────────────────────┘         ▼
+                                    (up to max_retries times)   completed/
 ```
 
-For large tasks, Planning and Implementation can also checkpoint with `PARTIAL` and loop with a fresh context up to
-`max_continuations` times (default `5`) before moving to the next phase.
+For larger tasks, Planning and Implementation can also checkpoint with `PARTIAL` and loop with a fresh context up to `max_continuations` times (default `5`) before moving to the next phase.
 
-- **Task Dispatcher** ([`commands/task-dispatcher.md`](commands/task-dispatcher.md)): the slash command. It runs in your
-  current session with your session's model. It's the only part that writes task state: it moves task files between
-  folders, records the execution log and phase changes, counts retries and `PARTIAL` continuations, splits large
-  implementation plans into step batches, re-spawns `Planning` or `Implementation` on `PARTIAL` checkpoints, and decides
-  where the task goes next. It never edits code itself, and it stops instead of improvising if a required sub-agent
-  isn't available.
-- **Planning** ([`agents/task-dispatcher-planning.md`](agents/task-dispatcher-planning.md)): explores the codebase and
-  reports a plan with target files, steps and acceptance criteria. It can also report research notes, and for large
-  codebases it can checkpoint intermediate discovery (`PARTIAL`) before finalizing the plan.
-- **Implementation** ([`agents/task-dispatcher-implementation.md`](agents/task-dispatcher-implementation.md)): makes the
-  code changes from the plan, runs the project's checks, and reports what it changed. For large plans, it works through
-  bounded step batches and returns `PARTIAL` checkpoints so each continuation starts with a fresh context.
-- **Verification** ([`agents/task-dispatcher-verification.md`](agents/task-dispatcher-verification.md)): reviews the
-  diff, runs tests and linters, and reports a `PASS` or `FAIL` verdict. On `FAIL`, the dispatcher sends the task back to
-  implementation with the failure details.
+- **Task Dispatcher** ([`commands/task-dispatcher.md`](commands/task-dispatcher.md)): runs in your current session using your session's model. It's the only part that touches task state (moving files between folders, writing the log, counting retries and `PARTIAL` continuations, and splitting big plans into step batches). It never edits project code itself, and if a required sub-agent isn't available it stops rather than improvising.
+- **Planning** ([`agents/task-dispatcher-planning.md`](agents/task-dispatcher-planning.md)): reads the codebase and writes a plan with target files, steps, and acceptance criteria. On big codebases it can save research notes and checkpoint with `PARTIAL` before finalizing the plan.
+- **Implementation** ([`agents/task-dispatcher-implementation.md`](agents/task-dispatcher-implementation.md)): writes the code from the plan, runs the project's checks, and reports back. For larger plans it works through bounded step batches and returns `PARTIAL` checkpoints so each continuation gets a fresh context.
+- **Verification** ([`agents/task-dispatcher-verification.md`](agents/task-dispatcher-verification.md)): reviews the diff, runs tests and linters, and returns `PASS` or `FAIL`. On `FAIL`, the dispatcher routes the task back to implementation with the failure details.
 
-The sub-agents never touch the task files; they only send a report back to the dispatcher.
+Sub-agents never touch the task files directly. They just send a report back, and the dispatcher records it.
 
 ## Using it
 
@@ -73,48 +58,32 @@ The sub-agents never touch the task files; they only send a report back to the d
 2. Run the command in a session for that project:
    - Junie: `/task-dispatcher task=my-task.md`
    - Claude Code: `/task-dispatcher my-task.md` (in a local session in the **Code** tab of the Claude Desktop app)
-3. Follow the task's progress in its file. The dispatcher uses these folders under the tasks directory:
+3. Follow the task's progress in its file. The dispatcher moves tasks through these folders:
 
 ```
 tasks/
 ├── pending/      # New task requests you write
-├── in-progress/  # Tasks being worked on, with their plan, log and attempts
+├── in-progress/  # Tasks being worked on, with their plan, log, and attempts
 ├── completed/    # Tasks that passed verification
 └── discovery/    # Research notes and in-progress planning checkpoints
 ```
 
-By default, the tasks directory is `.junie/tasks/` for Junie and `.claude/tasks/` for Claude Code. To store tasks in
-another project-relative directory for both tools (for example, a shared `agent-tasks/` folder), either add
-`.task-dispatcher.json` to that project's root (no reinstall needed) or set `TASK_DISPATCHER_TASKS_DIR` globally in
-`.env` (see [`.env.example`](.env.example)) or your shell environment and re-run `install`.
+If a run gets interrupted, just run `/task-dispatcher` on the same file again (now in `in-progress/`). It picks up from the recorded `active_agent`, `attempt`, and any `PARTIAL` checkpoint instead of starting over.
 
-To resume an interrupted task, re-run `/task-dispatcher` on the same task file (now in `in-progress/`); the dispatcher
-picks up from the recorded `active_agent`, `attempt`, and any saved `PARTIAL` checkpoint instead of restarting from
-scratch.
+If a completed task isn't right, reject it with a reason (for example, `/task-dispatcher Reject my-task.md: the new endpoint is missing input validation`). The dispatcher routes it back to planning or implementation depending on what you flagged.
 
-You can override `max_retries` (default `3`) and `max_continuations` (default `5`), or pass extra guidance such as
-requesting chunked execution, in four ways (highest precedence first):
+### Configuration and overrides
 
-- **Per run in the command prompt:**
-  - Junie: `/task-dispatcher task=my-task.md prompt="use a max continuation count of 10. This is a large change."`
-  - Claude Code: `/task-dispatcher my-task.md use a max continuation count of 10. This is a large change.`
-- **Per task in the file:** set `max_retries` / `max_continuations` in the task's frontmatter, or ask for chunked
-  execution in `# Human Request`.
-- **Per project in `.task-dispatcher.json`:** place a `.task-dispatcher.json` file in the project root (see below).
-- **Globally for both Junie and Claude Code:** set `TASK_DISPATCHER_MAX_RETRIES` and `TASK_DISPATCHER_MAX_CONTINUATIONS`
-  in `.env` (see [`.env.example`](.env.example)) or your shell environment and re-run `install`.
+You can change the tasks folder (`tasks_dir`), retry limit (`max_retries`, default `3`), continuation limit (`max_continuations`, default `5`), or pass extra guidance (like asking for chunked execution) at four levels, highest precedence first:
 
-To reject a completed task, run the command with a reason, for example
-`/task-dispatcher Reject my-task.md: the new endpoint is missing input validation`. The dispatcher sends it back to
-planning or implementation, depending on the reason.
+1. **Per run in the command prompt:**
+   - Junie: `/task-dispatcher task=my-task.md prompt="use a max continuation count of 10. This is a large change."`
+   - Claude Code: `/task-dispatcher my-task.md use a max continuation count of 10. This is a large change.`
+2. **Per task in the file:** set `max_retries` or `max_continuations` in the task's frontmatter, or ask for chunked execution under `# Human Request`.
+3. **Per project in `.task-dispatcher.json`:** drop a `.task-dispatcher.json` in the repo root to override `tasks_dir`, `max_retries`, or `max_continuations` for both Junie and Claude Code without re-running `install`. Every field is optional; omitted keys fall back to your global defaults.
+4. **Globally via `.env` or your shell:** set `TASK_DISPATCHER_TASKS_DIR`, `TASK_DISPATCHER_MAX_RETRIES`, or `TASK_DISPATCHER_MAX_CONTINUATIONS` in `.env` (see [`.env.example`](.env.example)) or your shell environment, then re-run `install`.
 
-### Per-project configuration (`.task-dispatcher.json`)
-
-To override pipeline defaults for a single repository across both Junie and Claude Code without re-running `install`,
-create a `.task-dispatcher.json` file in the project root. Every field is optional; any omitted key falls back to the
-global install-time default.
-
-Example with all supported override options:
+Example `.task-dispatcher.json` with all supported keys:
 
 ```json
 {
@@ -124,16 +93,11 @@ Example with all supported override options:
 }
 ```
 
-- `tasks_dir`: project-relative folder for `pending/`, `in-progress/`, `completed/`, and `discovery/`.
-- `max_retries`: default retry limit (non-negative integer) for verification failures.
-- `max_continuations`: default `PARTIAL` continuation limit (non-negative integer) per phase or attempt.
-
-Agent model and reasoning/effort settings live in static sub-agent frontmatter, so those remain configured globally at
-install time via `.env` or environment variables.
+Model and reasoning/effort settings live in static sub-agent frontmatter, so those still have to be set globally at install time via `.env` or environment variables.
 
 ## Installer commands
 
-[`bin/junie`](bin/junie) and [`bin/claude`](bin/claude) take the same sub-commands:
+[`bin/junie`](bin/junie) and [`bin/claude`](bin/claude) share the same sub-commands:
 
 | Command           | What it does                                                              |
 |-------------------|---------------------------------------------------------------------------|
@@ -141,19 +105,16 @@ install time via `.env` or environment variables.
 | `uninstall`       | Removes only the files this repository installed                          |
 | `doctor [--diff]` | Checks that the installed files are present and match the repository      |
 
-Pass `--diff` to `doctor` (e.g. `bin/junie doctor --diff` or `bin/claude doctor --diff`) to print a unified diff for each
-existing file that differs from the rendered template. This lets you inspect what changed after pulling updates and
-verify that `.env` or environment overrides are being applied as expected before running `install`. Missing files are
-still reported without printing a diff.
+Pass `--diff` to `doctor` (for example, `bin/junie doctor --diff` or `bin/claude doctor --diff`) when you want to see what changed after pulling updates, or double-check that your `.env` overrides are taking effect before reinstalling. Missing files are still reported without a diff.
 
-Where the files go:
+Where the files end up:
 
 | Tool        | Command                                          | Agents             | Home override       |
 |-------------|--------------------------------------------------|--------------------|---------------------|
 | Junie       | `~/.junie/commands/task-dispatcher.md`           | `~/.junie/agents/` | `JUNIE_HOME`        |
 | Claude Code | `~/.claude/skills/task-dispatcher/SKILL.md`      | `~/.claude/agents/` | `CLAUDE_CONFIG_DIR` |
 
-Re-run `install` after updating this repository or changing your settings.
+Re-run `install` after pulling updates or changing install-time settings.
 
 ## Choosing models
 
@@ -165,17 +126,12 @@ The defaults are:
 | Implementation | `sonnet`, low    | `claude-sonnet-5-5`, low   |
 | Verification   | `sonnet`, low    | `claude-sonnet-5-5`, low   |
 
-The dispatcher itself has no model setting and uses your session's model. It's preferable to choose Sonnet 5.5 on low
-effort, or Gemini 4 Hydrogen on low effort, when dispatching tasks.
+The dispatcher itself has no model setting and just uses your session's model. I'd stick to Sonnet 5.5 on low effort (or Gemini 4 Hydrogen on low effort) for the dispatching session, since it's mostly routing state and doesn't need heavy reasoning.
 
-To use other models, such as custom model profiles behind an AI gateway, or to change the tasks directory
-(`TASK_DISPATCHER_TASKS_DIR`) or default `max_retries` and `max_continuations` limits (`TASK_DISPATCHER_MAX_RETRIES` /
-`TASK_DISPATCHER_MAX_CONTINUATIONS`), copy [`.env.example`](.env.example) to `.env`, uncomment the settings you want,
-and run `install` again. Set `JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or `CLAUDE_DEFAULT_MODEL` /
-`CLAUDE_DEFAULT_EFFORT` to apply a default model or reasoning effort to all agents without a per-agent override. `.env`
-is gitignored, and variables set in your shell take precedence over it.
+If you want custom model profiles (like an AI gateway) or different defaults, copy [`.env.example`](.env.example) to `.env`, uncomment what you need, and re-run `install`. You can also set `JUNIE_DEFAULT_MODEL` / `JUNIE_DEFAULT_REASONING` or `CLAUDE_DEFAULT_MODEL` / `CLAUDE_DEFAULT_EFFORT` to apply a blanket default to any agent without a specific override. `.env` is gitignored, and shell environment variables win over `.env`.
 
 ```shell
+# Copy the template config, edit .env, then re-render and install
 cp .env.example .env
 bin/junie install
 ```
@@ -185,15 +141,14 @@ bin/junie install
 | Path                           | Contents                                                      |
 |--------------------------------|---------------------------------------------------------------|
 | [`commands/`](commands/)       | The task-dispatcher command template                          |
-| [`agents/`](agents/)           | The planning, implementation and verification agent templates |
+| [`agents/`](agents/)           | The planning, implementation, and verification agent templates |
 | [`bin/junie`](bin/junie)       | Installer for Junie                                           |
 | [`bin/claude`](bin/claude)     | Installer for Claude Code                                     |
-| [`bin/lib/`](bin/lib/)         | Shared installer code                                         |
+| [`bin/lib/`](bin/lib/)         | Shared installer logic                                        |
 | [`.env.example`](.env.example) | Optional model and pipeline settings                          |
+| [`test.sh`](test.sh)           | End-to-end test runner for the Junie pipeline                 |
 
-The files in [`commands/`](commands/) and [`agents/`](agents/) are tool-neutral templates. They contain `{{placeholder}}`
-values that each installer fills in with its tool's values (paths, tool names, front matter) when it copies them.
-Single-brace fields such as `{time}` are left as they are, because they're meant for the agents.
+The files in [`commands/`](commands/) and [`agents/`](agents/) are tool-neutral templates. Each installer swaps `{{placeholder}}` tags for its tool's paths, tool names, and front matter when copying them over. Single-brace fields like `{time}` stay untouched because they're meant for the agents at runtime.
 
 ## License
 MIT license. Go nuts, do whatever you want, just don't blame me if this breaks something.

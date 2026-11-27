@@ -1,41 +1,25 @@
-# Shared installer for the task dispatcher command and agents.
+# Shared installer logic sourced by the per-tool scripts in bin/ (like bin/junie
+# and bin/claude). Scripts need to define TOOL_NAME, HOME_ENV_VAR, DEFAULT_HOME,
+# and PLACEHOLDERS before calling `main "$@"`, and can override install_path()
+# when files land somewhere different (like Claude Code skills).
 #
-# Sourced by the per-tool scripts in bin/ (e.g. bin/junie, bin/claude), which
-# must define the following before calling `main "$@"`:
+# Sourcing this loads .env at the repo root if present, though shell env vars
+# still win. Shared settings (TASK_DISPATCHER_TASKS_DIR,
+# TASK_DISPATCHER_MAX_RETRIES, TASK_DISPATCHER_MAX_CONTINUATIONS) live here so
+# every tool picks them up.
 #
-#   TOOL_NAME        Human-readable tool name, e.g. "Junie".
-#   HOME_ENV_VAR     Name of the environment variable overriding the home directory.
-#   DEFAULT_HOME     Default home directory, e.g. "$HOME/.junie".
-#   PLACEHOLDERS     Alternating name/value pairs. A value may span multiple lines
-#                    and may be empty; a placeholder that is alone on its line and
-#                    renders empty removes the whole line.
-#
-# A script may also redefine install_path() after sourcing this file to change
-# where a repository file is installed (e.g. commands as Claude Code skills).
-#
-# Sourcing this file loads the optional .env file at the repository root (see
-# .env.example), so scripts can use its settings when defining PLACEHOLDERS.
-# Variables already set in the environment take precedence over the .env file.
-#
-# Common settings shared across tools:
-#   TASK_DISPATCHER_TASKS_DIR          Project-relative tasks directory override
-#                                      (falls back to each tool's default)
-#   TASK_DISPATCHER_MAX_RETRIES        Default max_retries (default: 3, via COMMON_PLACEHOLDERS)
-#   TASK_DISPATCHER_MAX_CONTINUATIONS  Default max_continuations (default: 5, via COMMON_PLACEHOLDERS)
-#
-# Repository files are vendor-neutral templates. Install-time placeholders use
-# the {{name}} syntax; single-brace {name} fields are left untouched because they
-# are template fields meant for the agent itself (e.g. {time} in log entries).
+# Install-time tags use {{name}}; single-brace {name} fields are left untouched
+# because they're runtime placeholders for the agents (like {time} in logs).
 
 set -euo pipefail
 
-# This file lives in bin/lib/, so the repository root is two levels up.
+# Lives in bin/lib/, so the repo root is two levels up.
 REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Repository directories that are mirrored into the tool's home directory.
+# Repo directories mirrored into the tool's home directory.
 MANAGED_DIRS=(commands agents)
 
-# Optional KEY=value settings file read by load_env.
+# Optional KEY=value config loaded by load_env.
 ENV_FILE="$REPO_ROOT/.env"
 
 if [[ -t 1 ]]; then
@@ -44,10 +28,8 @@ else
     RED=""; GREEN=""; YELLOW=""; RESET=""
 fi
 
-# Loads KEY=value lines from ENV_FILE, if it exists. Blank lines, # comments and
-# a leading "export " are ignored, and one pair of surrounding quotes is stripped.
-# The file is parsed rather than sourced, and variables that are already set in
-# the environment are left alone.
+# Parse .env line by line rather than sourcing it so we don't execute arbitrary
+# shell or clobber variables already set in the environment.
 load_env() {
     local line key value
     [[ -f "$ENV_FILE" ]] || return 0
@@ -69,8 +51,7 @@ load_env() {
     done < "$ENV_FILE"
 }
 
-# Prints the non-empty arguments joined by newlines. Used to build multi-line
-# front matter values where some fields are optional.
+# Join non-empty args with newlines so optional front matter fields don't leave blank lines.
 join_lines() {
     local out="" line
     for line in "$@"; do
@@ -79,8 +60,7 @@ join_lines() {
     printf '%s' "$out"
 }
 
-# Sets <out_var> to an integer environment variable or a default, failing if
-# a non-empty value is not a non-negative integer.
+# Read a non-negative integer setting into $1, falling back to $3 when $2 is unset or empty.
 read_int_setting() {
     local out_var="$1" env_var="$2" default_val="$3" val
     val="${!env_var:-$default_val}"
@@ -91,8 +71,7 @@ read_int_setting() {
     printf -v "$out_var" '%s' "$val"
 }
 
-# Sets <out_var> to TASK_DISPATCHER_TASKS_DIR (with trailing slashes stripped)
-# or <default_val> if unset or empty.
+# Read TASK_DISPATCHER_TASKS_DIR into $1 (stripping trailing slashes) or fall back to $2.
 read_tasks_dir() {
     local out_var="$1" default_val="$2" val
     val="${TASK_DISPATCHER_TASKS_DIR:-$default_val}"
@@ -115,25 +94,21 @@ usage() {
 Usage: $(basename "$0") <command> [options]
 
 Commands:
-  install     Install or update the task dispatcher command and agents into
-              ${TARGET_HOME_DIR}
-  uninstall   Remove the installed command and agents from ${TARGET_HOME_DIR}
-  doctor      Verify the installed files are in place and match the repository
-              Pass --diff to show unified diffs for files that differ
+  install     Install or update the dispatcher command and agents in ${TARGET_HOME_DIR}
+  uninstall   Remove only the files this repo installed from ${TARGET_HOME_DIR}
+  doctor      Check that installed files exist and match the repo (pass --diff to see diffs)
   help        Show this help
 
-Set ${HOME_ENV_VAR} to use a ${TOOL_NAME} home directory other than ${DEFAULT_HOME/#$HOME/~}.
+Set ${HOME_ENV_VAR} to point somewhere other than ${DEFAULT_HOME/#$HOME/~}.
 EOF
 }
 
-# Prints the path, relative to the tool's home directory, that the repository
-# file (relative path) is installed to. Defaults to the same relative path.
+# Default path mapping: keep the repo-relative path. Tool scripts (like bin/claude) override this when needed.
 install_path() {
     printf '%s\n' "$1"
 }
 
-# Removes the empty directories between the given path's parent and the tool's
-# home directory (exclusive), so uninstall leaves no empty folders behind.
+# Clean up empty parent dirs up to TARGET_HOME_DIR so uninstall doesn't leave stray folders behind.
 remove_empty_parents() {
     local dir
     dir="$(dirname "$1")"
@@ -143,7 +118,7 @@ remove_empty_parents() {
     done
 }
 
-# Prints the repository-relative path (e.g. "agents/foo.md") of every managed file.
+# List every managed markdown template as a repo-relative path (like "agents/foo.md").
 list_managed_files() {
     local dir file
     for dir in "${MANAGED_DIRS[@]}"; do
@@ -155,19 +130,18 @@ list_managed_files() {
     done
 }
 
-# Prints the repository file (relative path) with every {{placeholder}} replaced
-# by its tool-specific value. Fails if any {{placeholder}} is left over.
+# Render {{placeholder}} tags in a template and fail if any unknown ones are left over.
 render() {
     local rel="$1" content key value i leftover
     local all_placeholders=("${PLACEHOLDERS[@]}" "${COMMON_PLACEHOLDERS[@]}")
-    # Append and strip a sentinel so trailing newlines survive command substitution.
+    # Append and strip a trailing 'x' because command substitution eats trailing newlines.
     content="$(cat "$REPO_ROOT/$rel"; printf x)"
     content="${content%x}"
     for ((i = 0; i < ${#all_placeholders[@]}; i += 2)); do
         key="{{${all_placeholders[i]}}}"
         value="${all_placeholders[i + 1]}"
         if [[ -z "$value" ]]; then
-            # Drop lines holding only an empty placeholder (e.g. in front matter).
+            # Drop whole lines that only hold an empty placeholder so optional front matter doesn't leave blank lines.
             content="${content//$'\n'"$key"$'\n'/$'\n'}"
         fi
         content="${content//"$key"/$value}"
